@@ -41,3 +41,16 @@ def calculate_pose_error(q1, q2):
     orientation_error_degrees = np.rad2deg(angle)
     
     return orientation_error_degrees
+
+def offset_in_front(T_cam_obj, offset):
+    """
+    Return T_cam_goal = T_cam_obj  ·  T_offset(+X).
+
+    Parameters
+    ----------
+    T_cam_obj : (4,4) ndarray – camera ➜ object transform
+    offset    : float        – metres to move along +X of the object
+    """
+    T_offset = np.eye(4)
+    T_offset[0, 3] = offset  # +X in object frame
+    return T_cam_obj @ T_offset  # matrix product

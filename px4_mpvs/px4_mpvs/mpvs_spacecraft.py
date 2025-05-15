@@ -492,21 +492,12 @@ class SpacecraftMPVS(Node):
             # print ("obj position: ", self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
         # print error from x_pred with setpoint
-        # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
-        # self.get_logger().info(f'Linear Error: {lin_err:.3f}')
-        # ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
-        # self.get_logger().info(f'Angular Error: {ang_err:.3f}')
+        lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
+        self.get_logger().info(f'Linear Error: {lin_err:.3f}')
+        ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
+        self.get_logger().info(f'Angular Error: {ang_err:.3f}')
 
-        # DEBUG : to log misalignment angle
-        if hasattr(self, 'tf_buffer') and hasattr(self, 'object_position'):
-            from px4_mpc.test.test_missalignment import misalignment_angle
-            angle = misalignment_angle(
-                self.vehicle_local_position, 
-                self.vehicle_attitude, 
-                self.object_position
-            )
-            self.get_logger().info(f'Camera-object angle: {angle:.2f}° (constraint: {self.model.camera_fov_angle/2*180/np.pi:.2f}°)')
-        
+
 
         # Colect data
         idx = 0

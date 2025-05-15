@@ -81,13 +81,16 @@ class VisualServo(Node):
         # Add pose history buffer for consistency checking
         self.pose_history = []
         self.history_size = 5
-        self.position_threshold = 0.2
         self.goal_pose = Pose()
+        self.position_threshold = 0.2
+        self.orientation_threshold = 10.0
 
         # State variable for docking
+        self.success_start_time = None
+        self.success_duration_required = 2.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
-        self.x_offset = 0.8
+        self.x_offset = 0.2
         self.latest_time = self.get_clock().now()
         self.pose_obtained = False
 
@@ -105,18 +108,18 @@ class VisualServo(Node):
         )
 
         # # spawn pose #1
-        # self.init_pos = np.array(
-        #     [-0.01404785, 1.36248684, 0.0]
-        # )  # inverted z and y axis
-        # self.init_att = np.array(
-        #     [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01]
-        # )  # invered z and y axis
+        self.init_pos = np.array(
+            [-0.01404785, 1.36248684, 0.0]
+        )  # inverted z and y axis
+        self.init_att = np.array(
+            [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01])
+        
 
         # Spawn Pose #2
-        self.init_pos = np.array([0.10324634, -1.0295148, 0])
-        self.init_att = np.array(
-            [9.52709079e-01, 2.49832297e-08, 2.80198997e-09, 3.03883404e-01]
-        )
+        # self.init_pos = np.array([0.10324634, -1.0295148, 0])
+        # self.init_att = np.array(
+        #     [9.52709079e-01, 2.49832297e-08, 2.80198997e-09, 3.03883404e-01]
+        # )
 
         self.param_client = self.create_client(
             SetParameters, "pose_estimation_pcl/set_parameters"
@@ -145,8 +148,7 @@ class VisualServo(Node):
             if time_diff > 1 and self.pose_obtained:
                 self.enable_goicp(False)
                 self.docking_enabled = False
-
-
+                self.stop_servoing()
 
     def check_docking_status(self):
         # Check if the robot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
@@ -174,20 +176,57 @@ class VisualServo(Node):
             self.vehicle_attitude, goal_orientation
         )
 
-        if position_err < 0.3 and orientation_err < 10:
-            self.get_logger().info(
-                f"Docking completed. Position error: {position_err:.2f} m, Orientation error: {orientation_err:.2f} degrees"
-            )
-            self.docking_running = False
-            self.docking_enabled = False
-            self.enable_goicp(False)
-            req = SetServoPose.Request()
-            req.pose = Pose()
-            req.servoing_mode = False
-            print("Stopping servoing")
-            future = self.client_servo.call_async(req)
-            future.add_done_callback(self.service_callback)
+        print(f"position error: {position_err:.2f} m")
+        print(f"orientation error: {orientation_err:.2f} degrees")
 
+        # Check if we're within thresholds
+        if (
+            position_err < self.position_threshold
+            and orientation_err < self.orientation_threshold
+        ):
+            current_time = self.get_clock().now()
+
+            # Start the timer if not already started
+            if self.success_start_time is None:
+                self.success_start_time = current_time
+                self.get_logger().info(
+                    "Position and orientation within thresholds, starting timer"
+                )
+
+            # Check if we've been within thresholds long enough
+            elapsed_time = (current_time - self.success_start_time).nanoseconds / 1e9
+            if (
+                elapsed_time >= self.success_duration_required
+            ):
+                self.get_logger().info(
+                    f"Docking completed and stable for {elapsed_time:.2f}s. "
+                    + f"Position error: {position_err:.2f} m, "
+                    + f"Orientation error: {orientation_err:.2f} degrees"
+                )
+                self.reset_all_variables()
+        else:
+            # Reset timer if we go outside thresholds
+            if self.success_start_time is not None:
+                self.get_logger().info(
+                    "Position or orientation outside thresholds, resetting timer"
+                )
+                self.success_start_time = None
+            
+    def reset_all_variables(self):
+        self.docking_running = False
+        self.docking_enabled = False
+        self.enable_goicp(False)
+        self.pose_obtained = False
+        self.pose_history = []
+        self.stop_servoing()
+
+    def stop_servoing(self):
+        req = SetServoPose.Request()
+        req.pose = Pose()
+        req.servoing_mode = False
+
+        future = self.client_servo.call_async(req)
+        future.add_done_callback(self.service_callback)
 
     def enable_goicp(self, enable):
         # Create parameter objects
@@ -239,7 +278,7 @@ class VisualServo(Node):
         self.docking_enabled = request.data
         response.success = True
         if self.docking_enabled:
-            self.enable_goicp(True) # Enable GOICP
+            self.enable_goicp(True)  # Enable GOICP
             response.message = "Docking mode enabled"
             self.get_logger().info("Docking mode enabled")
         else:
@@ -311,7 +350,11 @@ class VisualServo(Node):
             pose = self.pose_history[i]
 
             distance = math_utils.calc_position_error(
-                [reference_pose.position.x, reference_pose.position.y, reference_pose.position.z],
+                [
+                    reference_pose.position.x,
+                    reference_pose.position.y,
+                    reference_pose.position.z,
+                ],
                 [pose.position.x, pose.position.y, pose.position.z],
             )
 
@@ -319,7 +362,7 @@ class VisualServo(Node):
                 print(
                     f"Pose inconsistency detected: {distance:.2f} > {self.position_threshold:.2f}"
                 )
-                self.pose_obtained = True
+                self.pose_obtained = False
                 return False
 
         self.pose_obtained = True

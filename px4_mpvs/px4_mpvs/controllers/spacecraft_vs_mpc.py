@@ -108,7 +108,7 @@ class SpacecraftVSMPC():
         ocp.cost.cost_type_e = 'EXTERNAL'
 
         ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error + model.bearing_penalty
-        ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error
+        ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error + model.bearing_penalty_e
 
         # Initialize parameters
         p_0 = np.concatenate((x0, np.zeros(nu), p_obj0, [self.w_bearing_penalty]))  # First step is error 0 since x_ref = x0
