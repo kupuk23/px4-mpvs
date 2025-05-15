@@ -40,7 +40,7 @@ def misalignment_angle(p_robot_I, q_robot, p_obj_I):
     r_I = p_obj_I - p_robot_I  # object bearing in inertial
     r_b = q_to_rot_mat(q_robot).T @ r_I  # inertial → body
     cos_theta = r_b[0] / np.linalg.norm(r_b)
-    cos_theta_max = np.cos(np.deg2rad(20))  # max angle
+    cos_theta_max = np.cos(np.deg2rad(15))  # max angle
     g_x = cos_theta_max * np.linalg.norm(r_b) - r_b[0]
     theta = np.arccos(np.clip(cos_theta, -1.0, 1.0))
     print(f"cos_theta: {cos_theta}, g_x: {g_x}, angle : {theta*deg}")

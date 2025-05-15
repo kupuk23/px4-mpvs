@@ -46,7 +46,9 @@ class SpacecraftVSModel():
         self.max_rate = 0.5
         self.torque_arm_length = 0.12
 
-        self.theta_max_deg = 50
+
+        # BEARING-ERROR variables
+        self.theta_max_deg = 15
 
     def get_acados_model(self) -> AcadosModel:
         def skew_symmetric(v):
@@ -80,7 +82,7 @@ class SpacecraftVSModel():
         q      = cs.MX.sym('q', 4)
         w      = cs.MX.sym('w', 3)
         p_obj = cs.MX.sym('p_obj', 3)  # Object position in inertial frame
-        uh_value = cs.MX.sym('uh_value', 1)
+        S = cs.MX.sym('bearing_weight', 1)
 
         x = cs.vertcat(p, v, q, w)
 
@@ -96,9 +98,16 @@ class SpacecraftVSModel():
         cos_theta_max = cs.cos(np.deg2rad(self.theta_max_deg))
         g_x = cos_theta_max * r_B_norm - r_B[0]
 
+        theta_err = cs.fmax(0, g_x)  # Only penalize constraint violations
+        bearing_penalty = S * theta_err**2
+
+
+        model.bearing_penalty = bearing_penalty
+        model.bearing_penalty_e = bearing_penalty
+
         # Define nonlinear constraint
-        model.con_h_expr = g_x
-        model.con_h_expr_e = g_x
+        # model.con_h_expr = g_x
+        # model.con_h_expr_e = g_x
 
         
         
@@ -151,7 +160,7 @@ class SpacecraftVSModel():
         model.name = self.name
 
         # Add model parameters
-        model_params = cs.vertcat(p_obj, uh_value)
+        model_params = cs.vertcat(p_obj, S)
         model.p = model_params  # Use object position as parameter
         
 

@@ -258,11 +258,12 @@ class SpacecraftMPVS(Node):
             self.get_logger().error("Failed to transform object pose")
             return
           
-        self.p_obj = np.array([
-            obj_pose_map.position.x, 
-            obj_pose_map.position.y, 
-            obj_pose_map.position.z
-        ])
+        if np.all(self.p_obj == 0.0):
+            self.p_obj = np.array([
+                obj_pose_map.position.x, 
+                obj_pose_map.position.y, 
+                obj_pose_map.position.z
+            ])
 
         # if np.all(self.p_obj != 0.0):
         #     self.model = SpacecraftVisualServoModel()
@@ -488,6 +489,7 @@ class SpacecraftMPVS(Node):
             # u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref)
         else:
+            # print ("obj position: ", self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
         # print error from x_pred with setpoint
         # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
@@ -560,6 +562,7 @@ class SpacecraftMPVS(Node):
             self.get_logger().info("Stopping visual servoing")
             
         self.mpc.update_constraints(self.servoing)
+        print ("Servoing mode: ", self.servoing)
         return response
 
 

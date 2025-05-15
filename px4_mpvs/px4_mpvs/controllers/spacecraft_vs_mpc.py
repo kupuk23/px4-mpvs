@@ -40,18 +40,19 @@ import time
 
 class SpacecraftVSMPC():
     def __init__(self, model, p_obj=None):
-        self.h_value = 1e5
-        self.h_weight = 1
+        # BEARING PENALTY Variables
+        self.w_bearing_penalty = 1000
         self.rot_limit = 5 #np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
+        
 
         self.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         if p_obj is not None:
             self.p_obj0 = p_obj
         else:
-            self.p_obj0 = np.array([2.0, 0.0, 0.0])  # object position in inertial frame
+            self.p_obj0 = np.array([5.0, 0.0, 0.0])  # object position in inertial frame
 
         self.ocp_solver, self.integrator = self.setup(self.x0, self.N, self.Tf, self.p_obj0)
 
@@ -92,7 +93,7 @@ class SpacecraftVSMPC():
         x = ocp.model.x
         u = ocp.model.u
         p_obj = ocp.model.p[0:3]
-        uh_value = ocp.model.p[3]
+        S = ocp.model.p[3]
 
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
@@ -100,28 +101,25 @@ class SpacecraftVSMPC():
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         u_error = u - u_ref
 
-        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, uh_value)
+        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, S)
 
         # define cost with parametric reference
         ocp.cost.cost_type = 'EXTERNAL'
         ocp.cost.cost_type_e = 'EXTERNAL'
 
-        ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error
+        ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error + model.bearing_penalty
         ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error
 
         # Initialize parameters
-        p_0 = np.concatenate((x0, np.zeros(nu), p_obj0, [self.h_value]))  # First step is error 0 since x_ref = x0
+        p_0 = np.concatenate((x0, np.zeros(nu), p_obj0, [self.w_bearing_penalty]))  # First step is error 0 since x_ref = x0
         ocp.parameter_values = p_0
         
         # INEQUALITY CONSTRAINTS SETUP #
-        ocp.dims.nh = 1  # 
-        ocp.dims.nh_e = 1  
+        # ocp.dims.nh = 1  # 
 
-        # set up the constraints bounds : g(x) <= 0 
-        ocp.constraints.lh = np.array([-self.h_value])
-        ocp.constraints.uh = np.array(uh_value)
-        ocp.constraints.lh_e = np.array([-self.h_value])
-        ocp.constraints.uh_e = np.array(uh_value)
+        # # set up the constraints bounds : g(x) <= 0 
+        # ocp.constraints.lh = np.array([-self.h_value])
+        # ocp.constraints.uh = np.array(uh_value)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -131,9 +129,9 @@ class SpacecraftVSMPC():
 
         # set bounds for angular velocity
 
-        ocp.constraints.idxbx = np.array([10, 11, 12])      # ωx, ωy, ωz
-        ocp.constraints.lbx   = np.array([-self.rot_limit, -self.rot_limit, -self.rot_limit])
-        ocp.constraints.ubx   = np.array([+self.rot_limit, +self.rot_limit, +self.rot_limit])
+        # ocp.constraints.idxbx = np.array([10, 11, 12])      # ωx, ωy, ωz
+        # ocp.constraints.lbx   = np.array([-self.rot_limit, -self.rot_limit, -self.rot_limit])
+        # ocp.constraints.ubx   = np.array([+self.rot_limit, +self.rot_limit, +self.rot_limit])
         
         # set options
         ocp.solver_options.qp_solver = 'PARTIAL_CONDENSING_HPIPM'
@@ -165,7 +163,7 @@ class SpacecraftVSMPC():
     
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.h_weight = 0 if servoing_enabled else 1e5
+        self.w_bearing_penalty = 1000 if servoing_enabled else 0
         
     def solve(self, x0, verbose=False, ref=None, object_position=None):
 
@@ -183,11 +181,11 @@ class SpacecraftVSMPC():
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], object_position, [self.h_weight*self.h_value]])
+                p_i = np.concatenate([ref[:, i], object_position, [self.w_bearing_penalty]])
                 ocp_solver.set(i, "p", p_i)
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, object_position, [self.h_weight*self.h_value]])
+                p_i = np.concatenate([zero_ref, object_position, [self.w_bearing_penalty]])
                 ocp_solver.set(i, "p", p_i)
 
         # set initial state

@@ -1,6 +1,6 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Pose
 import rclpy.parameter
 import rclpy.parameter_client
 from vs_msgs.srv import SetServoPose
@@ -13,7 +13,15 @@ import tf_transformations as tft
 import numpy as np
 from rcl_interfaces.srv import SetParameters
 from rcl_interfaces.msg import ParameterType, Parameter, SetParametersResult
-
+from rclpy.time import Time
+from px4_msgs.msg import VehicleAttitude, VehicleLocalPosition
+from rclpy.qos import (
+    QoSProfile,
+    QoSReliabilityPolicy,
+    QoSDurabilityPolicy,
+    QoSHistoryPolicy,
+)
+import px4_mpvs.utils.math_utils as math_utils
 
 
 class VisualServo(Node):
@@ -27,8 +35,28 @@ class VisualServo(Node):
         self.object_pose_sub = self.create_subscription(
             PoseStamped, "/pose/icp_result", self.pose_callback, 10
         )
+        qos_profile_sub = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            durability=QoSDurabilityPolicy.VOLATILE,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=0,
+        )
 
-        self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
+        self.attitude_sub = self.create_subscription(
+            VehicleAttitude,
+            f"/fmu/out/vehicle_attitude",
+            self.vehicle_attitude_callback,
+            qos_profile_sub,
+        )
+
+        self.local_position_sub = self.create_subscription(
+            VehicleLocalPosition,
+            f"/fmu/out/vehicle_local_position",
+            self.vehicle_local_position_callback,
+            qos_profile_sub,
+        )
+
+        self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
 
         # Create a client for the set_pose service
         self.client_servo = self.create_client(
@@ -45,14 +73,23 @@ class VisualServo(Node):
         while not self.client_set_pose.wait_for_service(timeout_sec=1.0):
             self.get_logger().info("Service /set_pose not available, waiting...")
 
+        # Robot pose in map
+        self.vehicle_local_position = np.zeros(3)  # robot position in map
+        self.vehicle_local_velocity = np.zeros(3)
+        self.vehicle_attitude = np.zeros(4)  # robot attitude in map
+
         # Add pose history buffer for consistency checking
         self.pose_history = []
         self.history_size = 5
-        self.position_threshold = 0.05
+        self.position_threshold = 0.2
+        self.goal_pose = Pose()
 
         # State variable for docking
-        self.run_docking = False
+        self.docking_running = False
+        self.docking_enabled = False
         self.x_offset = 0.8
+        self.latest_time = self.get_clock().now()
+        self.pose_obtained = False
 
         # Add TF buffer and listener for coordinate transformations
         self.tf_buffer = Buffer()
@@ -60,11 +97,11 @@ class VisualServo(Node):
 
         # Create service for docking control
         self.srv = self.create_service(
-            SetBool, "run_docking", self.run_docking_callback
+            SetBool, "run_docking", self.docking_callback_enabled
         )
 
         self.get_logger().info(
-            "Pose forwarder initialized. Use run_docking service to enable/disable."
+            "Pose forwarder initialized. Use docking_enabled service to enable/disable."
         )
 
         # # spawn pose #1
@@ -97,12 +134,60 @@ class VisualServo(Node):
         self.timer = self.create_timer(timer_period, self.servoing_callback)
 
     def servoing_callback(self):
-        if self.run_docking:
-            # change params in pose_estimation_pcl using dynamic reconfigure
-            self.enable_goicp(True)
+        current_time = self.get_clock().now()
+        time_diff = (
+            current_time - self.latest_time
+        ).nanoseconds / 1e9  # Convert to seconds
 
-        else:
-            pass
+        if self.docking_enabled and self.docking_running:
+            # change params in pose_estimation_pcl using dynamic reconfigure
+            self.check_docking_status()
+            if time_diff > 1 and self.pose_obtained:
+                self.enable_goicp(False)
+                self.docking_enabled = False
+
+
+
+    def check_docking_status(self):
+        # Check if the robot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
+        goal_position = np.array(
+            [
+                self.goal_pose.position.x,
+                self.goal_pose.position.y,
+                self.goal_pose.position.z,
+            ]
+        )
+        position_err = math_utils.calc_position_error(
+            self.vehicle_local_position, goal_position
+        )
+
+        goal_orientation = np.array(
+            [
+                self.goal_pose.orientation.w,
+                self.goal_pose.orientation.x,
+                self.goal_pose.orientation.y,
+                self.goal_pose.orientation.z,
+            ]
+        )
+
+        orientation_err = math_utils.calculate_pose_error(
+            self.vehicle_attitude, goal_orientation
+        )
+
+        if position_err < 0.3 and orientation_err < 10:
+            self.get_logger().info(
+                f"Docking completed. Position error: {position_err:.2f} m, Orientation error: {orientation_err:.2f} degrees"
+            )
+            self.docking_running = False
+            self.docking_enabled = False
+            self.enable_goicp(False)
+            req = SetServoPose.Request()
+            req.pose = Pose()
+            req.servoing_mode = False
+            print("Stopping servoing")
+            future = self.client_servo.call_async(req)
+            future.add_done_callback(self.service_callback)
+
 
     def enable_goicp(self, enable):
         # Create parameter objects
@@ -120,14 +205,12 @@ class VisualServo(Node):
 
     def param_callback(self, future):
         try:
-            response  = future.result()
+            response = future.result()
             for result in response.results:
                 if result.successful:
                     self.get_logger().info(f"Parameter set successfully")
                 else:
-                    self.get_logger().warn(
-                        f"Failed to set parameter: {result.reason}"
-                    )
+                    self.get_logger().warn(f"Failed to set parameter: {result.reason}")
         except Exception as e:
             self.get_logger().error(f"Parameter setting failed: {e}")
 
@@ -143,7 +226,7 @@ class VisualServo(Node):
         init_poseStamped.pose.orientation.y = orientation[2]
         init_poseStamped.pose.orientation.z = orientation[3]
 
-        self.goal_pose_pub.publish(init_poseStamped)
+        self.goal_pub.publish(init_poseStamped)
         request = SetPose.Request()
         request.pose = init_poseStamped.pose
 
@@ -151,11 +234,12 @@ class VisualServo(Node):
         future = self.client_set_pose.call_async(request)
         future.add_done_callback(self.service_callback)
 
-    def run_docking_callback(self, request, response):
+    def docking_callback_enabled(self, request, response):
         """Service callback to enable/disable pose forwarding"""
-        self.run_docking = request.data
+        self.docking_enabled = request.data
         response.success = True
-        if self.run_docking:
+        if self.docking_enabled:
+            self.enable_goicp(True) # Enable GOICP
             response.message = "Docking mode enabled"
             self.get_logger().info("Docking mode enabled")
         else:
@@ -164,7 +248,8 @@ class VisualServo(Node):
         return response
 
     def pose_callback(self, msg):
-        # transformed_pose_stamped = None
+        # Get current ROS time
+        self.latest_time = self.get_clock().now()
         # Store the pose in history for consistency check
         self.pose_history.append(msg.pose)
 
@@ -172,21 +257,18 @@ class VisualServo(Node):
         if len(self.pose_history) > self.history_size:
             self.pose_history.pop(0)
 
-        # Only forward the pose if it's consistent and run_docking is True
-        if self.run_docking and self.is_pose_consistent():
-            # self.run_docking = False
+        # Only forward the pose if it's consistent and docking_enabled is True
+        if (
+            self.docking_enabled
+            and self.is_pose_consistent()
+            and not self.docking_running
+        ):
+            # self.docking_enabled = False
             self.get_logger().info("Pose consistent, transforming to map frame")
 
             T_cam_obj = ros_utils.pose_to_matrix(msg.pose)
             # Transform the pose to map frame and apply offset/rotation
             T_cam_goal = ros_utils.offset_in_front(T_cam_obj, self.x_offset)
-
-            # transform = self.tf_buffer.lookup_transform(
-            #         "map",  # target frame
-            #         msg.header.frame_id,  # source frame
-            #         rclpy.time.Time(),  # get the latest transform
-            #         rclpy.duration.Duration(seconds=1.0),  # timeout
-            #     )
 
             transform = ros_utils.lookup_transform(
                 self.tf_buffer, "map", msg.header.frame_id
@@ -199,7 +281,9 @@ class VisualServo(Node):
                 T_cam_goal, transform, "map", self.get_clock().now().to_msg()
             )
 
-            self.goal_pose_pub.publish(transformed_pose_stamped)
+            self.goal_pose = transformed_pose_stamped.pose
+
+            self.goal_pub.publish(transformed_pose_stamped)
             request = SetServoPose.Request()
             request.pose = transformed_pose_stamped.pose
             request.servoing_mode = True
@@ -207,11 +291,12 @@ class VisualServo(Node):
             # Send the request asynchronously
             future = self.client_servo.call_async(request)
             future.add_done_callback(self.service_callback)
+            self.docking_running = True
 
-        elif not self.run_docking:
-            self.get_logger().debug("run_docking is False, not forwarding pose")
+        elif not self.docking_enabled:
+            self.get_logger().debug("docking_enabled is False, not forwarding pose")
         elif not self.is_pose_consistent():
-            # self.run_docking = False
+            # self.docking_enabled = False
             # self.enable_goicp(False)
             self.get_logger().debug("Pose not consistent yet, waiting for stability")
 
@@ -225,19 +310,19 @@ class VisualServo(Node):
         for i in range(-2, -self.history_size - 1, -1):
             pose = self.pose_history[i]
 
-            # Calculate Euclidean distance between positions
-            dx = reference_pose.position.x - pose.position.x
-            dy = reference_pose.position.y - pose.position.y
-            dz = reference_pose.position.z - pose.position.z
-            distance = (dx**2 + dy**2 + dz**2) ** 0.5
+            distance = math_utils.calc_position_error(
+                [reference_pose.position.x, reference_pose.position.y, reference_pose.position.z],
+                [pose.position.x, pose.position.y, pose.position.z],
+            )
 
             if distance > self.position_threshold:
                 print(
                     f"Pose inconsistency detected: {distance:.2f} > {self.position_threshold:.2f}"
                 )
-
+                self.pose_obtained = True
                 return False
 
+        self.pose_obtained = True
         return True
 
     def service_callback(self, future):
@@ -246,6 +331,20 @@ class VisualServo(Node):
             self.get_logger().info(f"Service call succeeded. Response: {response}")
         except Exception as e:
             self.get_logger().error(f"Service call failed: {e}")
+
+    def vehicle_attitude_callback(self, msg):
+        self.vehicle_attitude[0] = msg.q[0]
+        self.vehicle_attitude[1] = msg.q[1]
+        self.vehicle_attitude[2] = -msg.q[2]
+        self.vehicle_attitude[3] = -msg.q[3]
+
+    def vehicle_local_position_callback(self, msg):
+        self.vehicle_local_position[0] = msg.x
+        self.vehicle_local_position[1] = -msg.y
+        self.vehicle_local_position[2] = -msg.z
+        self.vehicle_local_velocity[0] = msg.vx
+        self.vehicle_local_velocity[1] = -msg.vy
+        self.vehicle_local_velocity[2] = -msg.vz
 
 
 def main():
