@@ -1,0 +1,27 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/tafarrel/px4_ws/install/px4_msgs/include/**",
+        "/home/tafarrel/ros2_ws/install/pose_estimation_pcl/include/**",
+        "/home/tafarrel/ros2_ws/install/pcl_ros/include/**",
+        "/home/tafarrel/ros2_ws/install/pcl_conversions/include/**",
+        "/home/tafarrel/ros2_ws/install/open3d_conversions/include/**",
+        "/home/tafarrel/discower_ws/install/vs_msgs/include/**",
+        "/home/tafarrel/discower_ws/install/mpc_msgs/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

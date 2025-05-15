@@ -1,0 +1,23 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/tafarrel/px4_ws/install/px4_msgs/lib/python3.12/site-packages",
+        "/home/tafarrel/ros2_ws/build/velocity_command",
+        "/home/tafarrel/ros2_ws/install/velocity_command/lib/python3.12/site-packages",
+        "/home/tafarrel/ros2_ws/build/tf_handler",
+        "/home/tafarrel/ros2_ws/install/tf_handler/lib/python3.12/site-packages",
+        "/home/tafarrel/ros2_ws/build/ibvs_testing",
+        "/home/tafarrel/ros2_ws/install/ibvs_testing/lib/python3.12/site-packages",
+        "/home/tafarrel/discower_ws/build/px4_mpvs",
+        "/home/tafarrel/discower_ws/install/px4_mpvs/lib/python3.12/site-packages",
+        "/home/tafarrel/discower_ws/build/px4_mpc",
+        "/home/tafarrel/discower_ws/install/px4_mpc/lib/python3.12/site-packages",
+        "/home/tafarrel/discower_ws/install/vs_msgs/lib/python3.12/site-packages",
+        "/home/tafarrel/discower_ws/build/px4_offboard",
+        "/home/tafarrel/discower_ws/install/px4_offboard/lib/python3.12/site-packages",
+        "/home/tafarrel/discower_ws/install/mpc_msgs/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages",
+        "",
+        "/home/tafarrel/venv/lib/python3.12/site-packages",
+        "/home/tafarrel/acados/interfaces/acados_template/"
+    ]
+}
