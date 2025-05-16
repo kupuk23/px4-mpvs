@@ -201,12 +201,12 @@ class SpacecraftMPVS(Node):
             )
             
 
-        # self.setpoint_pose_sub = self.create_subscription(
-        #     PoseStamped,
-        #     '/goal_pose',
-        #     self.get_setpoint_pose_callback,
-        #     0
-        # )
+        self.setpoint_pose_sub = self.create_subscription(
+            PoseStamped,
+            '/goal_pose',
+            self.get_setpoint_pose_callback,
+            0
+        )
 
         self.publisher_offboard_mode = self.create_publisher(
             OffboardControlMode,
@@ -492,10 +492,10 @@ class SpacecraftMPVS(Node):
             # print ("obj position: ", self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
         # print error from x_pred with setpoint
-        lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
-        self.get_logger().info(f'Linear Error: {lin_err:.3f}')
-        ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
-        self.get_logger().info(f'Angular Error: {ang_err:.3f}')
+        # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
+        # self.get_logger().info(f'Linear Error: {lin_err:.3f}')
+        # ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
+        # self.get_logger().info(f'Angular Error: {ang_err:.3f}')
 
 
 

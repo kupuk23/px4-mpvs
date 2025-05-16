@@ -41,7 +41,8 @@ import time
 class SpacecraftVSMPC():
     def __init__(self, model, p_obj=None):
         # BEARING PENALTY Variables
-        self.w_bearing_penalty = 1000
+        self.ineq_bounds = 1e4
+        self.w_slack = 0
         self.rot_limit = 5 #np.inf .1
         self.model = model
         self.Tf = 5.0
@@ -78,7 +79,7 @@ class SpacecraftVSMPC():
         # set cost
         Q_mat = np.diag([5e1, 5e1, 5e1,
                          1e1, 1e1, 1e1,
-                         8e3,
+                         8e3, #8e3 default
                          1e1, 1e1, 1e1])
         Q_e = 20 * Q_mat
         R_mat = np.diag([1e1] * 4)
@@ -93,7 +94,6 @@ class SpacecraftVSMPC():
         x = ocp.model.x
         u = ocp.model.u
         p_obj = ocp.model.p[0:3]
-        S = ocp.model.p[3]
 
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
@@ -101,25 +101,18 @@ class SpacecraftVSMPC():
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         u_error = u - u_ref
 
-        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, S)
+        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj)
 
         # define cost with parametric reference
         ocp.cost.cost_type = 'EXTERNAL'
         ocp.cost.cost_type_e = 'EXTERNAL'
 
-        ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error + model.bearing_penalty
-        ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error + model.bearing_penalty_e
+        ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error 
+        ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error 
 
         # Initialize parameters
-        p_0 = np.concatenate((x0, np.zeros(nu), p_obj0, [self.w_bearing_penalty]))  # First step is error 0 since x_ref = x0
+        p_0 = np.concatenate((x0, np.zeros(nu), p_obj0))  # First step is error 0 since x_ref = x0
         ocp.parameter_values = p_0
-        
-        # INEQUALITY CONSTRAINTS SETUP #
-        # ocp.dims.nh = 1  # 
-
-        # # set up the constraints bounds : g(x) <= 0 
-        # ocp.constraints.lh = np.array([-self.h_value])
-        # ocp.constraints.uh = np.array(uh_value)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -141,6 +134,28 @@ class SpacecraftVSMPC():
         ocp.solver_options.integrator_type = 'ERK'
 
         # ocp.solver_options.print_level = 1
+        
+        # constraint bounds -inf <= g(x) <= 0
+        ocp.constraints.lh = np.array([-self.ineq_bounds])
+        ocp.constraints.uh = np.array([0.0])
+        ocp.constraints.lh_e = np.array([-self.ineq_bounds])
+        ocp.constraints.uh_e = np.array([0.0])
+
+        # define soft constraint using slack variable
+        ocp.constraints.idxsh = np.array([0])
+        ocp.constraints.idxsh_e = np.array([0])
+
+        ocp.cost.Zl = np.array([0.0])
+        ocp.cost.Zu = np.array([self.w_slack])
+        ocp.cost.Zl_e = np.array([0.0])
+        ocp.cost.Zu_e = np.array([self.w_slack])
+
+        ocp.cost.zl = np.array([0.0])
+        ocp.cost.zu = np.array([self.w_slack])
+        ocp.cost.zl_e = np.array([0.0])
+        ocp.cost.zu_e = np.array([self.w_slack])
+        
+
         use_RTI=True
         if use_RTI:
             ocp.solver_options.nlp_solver_type = 'SQP_RTI' # SQP_RTI, SQP
@@ -163,7 +178,7 @@ class SpacecraftVSMPC():
     
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_bearing_penalty = 1000 if servoing_enabled else 0
+        self.w_slack = 200 if servoing_enabled else 0
         
     def solve(self, x0, verbose=False, ref=None, object_position=None):
 
@@ -177,16 +192,25 @@ class SpacecraftVSMPC():
             zero_ref = np.zeros(self.model.get_acados_model().x.size()[0] + self.model.get_acados_model().u.size()[0])
             zero_ref[6] = 1.0
 
+
         for i in range(self.N+1):
+            if i != self.N and i != 0:
+                self.ocp_solver.cost_set(i, "Zu", np.array([self.w_slack]))
+                self.ocp_solver.cost_set(i, "zu", np.array([self.w_slack]))
+                
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], object_position, [self.w_bearing_penalty]])
+                p_i = np.concatenate([ref[:, i], object_position])
                 ocp_solver.set(i, "p", p_i)
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, object_position, [self.w_bearing_penalty]])
+                p_i = np.concatenate([zero_ref, object_position])
                 ocp_solver.set(i, "p", p_i)
+        
+        # self.ocp_solver.cost_set(self.N, "zu_e", np.array([self.w_slack]))
+        # self.ocp_solver.cost_set(self.N, "Zu_e", np.array([self.w_slack]))
+
 
         # set initial state
         ocp_solver.set(0, "lbx", x0.flatten())

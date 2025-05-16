@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'mpvs_spacecraft = px4_mpvs.mpvs_spacecraft:main',
             'test_missalignment = px4_mpvs.test.test_missalignment:main',
+            'test_pose_camera = px4_mpvs.test.test_pose_camera:main',
         ],
     },
 )

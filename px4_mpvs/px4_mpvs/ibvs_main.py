@@ -15,15 +15,25 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 class IBVSNode(Node):
     def __init__(self):
         super().__init__('ibvs_node')
-        self.declare_parameter('use_compressed', False)
-        self.use_compressed = self.get_parameter('use_compressed').value
         self.bridge = CvBridge()
         self.image_sub = self.create_subscription(
-            CompressedImage if self.use_compressed else Image,
-            '/camera/image_raw/compressed' if self.use_compressed else '/camera/image_raw',
-            self.image_callback,
-            10
+            CompressedImage, "/camera/image/compressed", self.image_callback, 10
         )
+
+        self.depth_sub = self.create_subscription(
+            Image, "camera/depth_image", self.depth_callback, 10
+        )
+        
+        self.srv = self.create_service(
+            SetBool, "enable_ibvs", self.enable_ibvs_callback
+        )
+
+        # Initialize depth image
+        self.depth_image = None
+
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.srv = self.create_service(SetBool, 'start_ibvs', self.start_ibvs_callback)
         self.is_running = False
+
+        # IBVS control enabled by default
+        self.ibvs_enabled = False

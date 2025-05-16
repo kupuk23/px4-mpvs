@@ -7,7 +7,7 @@ from vs_msgs.srv import SetServoPose
 from mpc_msgs.srv import SetPose
 from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
-import px4_mpc.utils.ros_utils as ros_utils
+import px4_mpvs.utils.ros_utils as ros_utils
 from tf2_geometry_msgs import do_transform_pose
 import tf_transformations as tft
 import numpy as np
@@ -82,15 +82,17 @@ class VisualServo(Node):
         self.pose_history = []
         self.history_size = 5
         self.goal_pose = Pose()
-        self.position_threshold = 0.2
-        self.orientation_threshold = 10.0
+        self.position_threshold = 0.5
+        self.orientation_threshold = 15.0
+        self.is_pose_consistent = False
+        self.last_consistent_pose = None  # Last consistent pose
 
         # State variable for docking
         self.success_start_time = None
         self.success_duration_required = 2.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
-        self.x_offset = 0.2
+        self.x_offset = 0.5
         self.latest_time = self.get_clock().now()
         self.pose_obtained = False
 
@@ -112,8 +114,8 @@ class VisualServo(Node):
             [-0.01404785, 1.36248684, 0.0]
         )  # inverted z and y axis
         self.init_att = np.array(
-            [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01])
-        
+            [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01]
+        )
 
         # Spawn Pose #2
         # self.init_pos = np.array([0.10324634, -1.0295148, 0])
@@ -145,18 +147,19 @@ class VisualServo(Node):
         if self.docking_enabled and self.docking_running:
             # change params in pose_estimation_pcl using dynamic reconfigure
             self.check_docking_status()
-            if time_diff > 1 and self.pose_obtained:
-                self.enable_goicp(False)
-                self.docking_enabled = False
-                self.stop_servoing()
+            transformed_pose_stamped = ros_utils.generate_pose_stamped(self.last_consistent_pose, clock=self.get_clock())
+            self.goal_pub.publish(transformed_pose_stamped)
+            # if time_diff > 1:
+            #     self.enable_goicp(False)
+            #     self.reset_all_variables()
 
     def check_docking_status(self):
         # Check if the robot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
         goal_position = np.array(
             [
-                self.goal_pose.position.x,
-                self.goal_pose.position.y,
-                self.goal_pose.position.z,
+                self.last_consistent_pose.position.x,
+                self.last_consistent_pose.position.y,
+                self.last_consistent_pose.position.z,
             ]
         )
         position_err = math_utils.calc_position_error(
@@ -165,14 +168,14 @@ class VisualServo(Node):
 
         goal_orientation = np.array(
             [
-                self.goal_pose.orientation.w,
-                self.goal_pose.orientation.x,
-                self.goal_pose.orientation.y,
-                self.goal_pose.orientation.z,
+                self.last_consistent_pose.orientation.w,
+                self.last_consistent_pose.orientation.x,
+                self.last_consistent_pose.orientation.y,
+                self.last_consistent_pose.orientation.z,
             ]
         )
 
-        orientation_err = math_utils.calculate_pose_error(
+        orientation_err = math_utils.calculate_orientation_error(
             self.vehicle_attitude, goal_orientation
         )
 
@@ -195,11 +198,9 @@ class VisualServo(Node):
 
             # Check if we've been within thresholds long enough
             elapsed_time = (current_time - self.success_start_time).nanoseconds / 1e9
-            if (
-                elapsed_time >= self.success_duration_required
-            ):
+            if elapsed_time >= self.success_duration_required:
                 self.get_logger().info(
-                    f"Docking completed and stable for {elapsed_time:.2f}s. "
+                    f"Docking completed successfully! "
                     + f"Position error: {position_err:.2f} m, "
                     + f"Orientation error: {orientation_err:.2f} degrees"
                 )
@@ -211,13 +212,15 @@ class VisualServo(Node):
                     "Position or orientation outside thresholds, resetting timer"
                 )
                 self.success_start_time = None
-            
+
     def reset_all_variables(self):
         self.docking_running = False
         self.docking_enabled = False
         self.enable_goicp(False)
         self.pose_obtained = False
         self.pose_history = []
+        # self.last_consistent_pose = None
+
         self.stop_servoing()
 
     def stop_servoing(self):
@@ -289,38 +292,37 @@ class VisualServo(Node):
     def pose_callback(self, msg):
         # Get current ROS time
         self.latest_time = self.get_clock().now()
-        # Store the pose in history for consistency check
-        self.pose_history.append(msg.pose)
 
-        # Keep only the most recent poses
+        transformed_pose_stamped = ros_utils.generate_goal_from_object_pose(
+                msg.pose,
+                self.tf_buffer,
+                self.x_offset,
+                self.get_clock(),
+            )
+        if transformed_pose_stamped is None:
+            self.get_logger().warn("Failed to transform pose, skipping")
+            return
+        
+        # Store the pose in history for consistency check
+        self.pose_history.append(transformed_pose_stamped.pose)
         if len(self.pose_history) > self.history_size:
             self.pose_history.pop(0)
+
+        self.is_pose_consistent = self.check_pose_consistency()
 
         # Only forward the pose if it's consistent and docking_enabled is True
         if (
             self.docking_enabled
-            and self.is_pose_consistent()
+            and self.is_pose_consistent
             and not self.docking_running
         ):
             # self.docking_enabled = False
-            self.get_logger().info("Pose consistent, transforming to map frame")
+            self.get_logger().info("Pose consistent, forwarding to servoing service")
 
-            T_cam_obj = ros_utils.pose_to_matrix(msg.pose)
-            # Transform the pose to map frame and apply offset/rotation
-            T_cam_goal = ros_utils.offset_in_front(T_cam_obj, self.x_offset)
 
-            transform = ros_utils.lookup_transform(
-                self.tf_buffer, "map", msg.header.frame_id
-            )
-            if transform is None:
-                self.get_logger().error("Failed to get transform from camera to map")
+            if transformed_pose_stamped is None:
+                self.get_logger().warn("Failed to transform pose, skipping")
                 return
-
-            transformed_pose_stamped = ros_utils.matrix_to_posestamped(
-                T_cam_goal, transform, "map", self.get_clock().now().to_msg()
-            )
-
-            self.goal_pose = transformed_pose_stamped.pose
 
             self.goal_pub.publish(transformed_pose_stamped)
             request = SetServoPose.Request()
@@ -334,22 +336,32 @@ class VisualServo(Node):
 
         elif not self.docking_enabled:
             self.get_logger().debug("docking_enabled is False, not forwarding pose")
-        elif not self.is_pose_consistent():
-            # self.docking_enabled = False
-            # self.enable_goicp(False)
+        elif not self.is_pose_consistent:
             self.get_logger().debug("Pose not consistent yet, waiting for stability")
 
-    def is_pose_consistent(self):
+    def check_pose_consistency(self):
         """Check if the recent poses are consistent within threshold"""
+
+        consistent_pos_tresh = 0.3
+        consistent_orient_tresh = 10.0
         if len(self.pose_history) < self.history_size:
             return False
 
         # Check the last self.history_size poses
         reference_pose = self.pose_history[-1]
-        for i in range(-2, -self.history_size - 1, -1):
+        for i in range(0, -self.history_size, -1):
+
+            # if (
+            #     i == -self.history_size
+            # ):  # add a check for last_consistent_pose on the last iteration
+            #     if self.last_consistent_pose is None:
+            #         break
+            #     pose = self.last_consistent_pose
+
+            # else:
             pose = self.pose_history[i]
 
-            distance = math_utils.calc_position_error(
+            position_err = math_utils.calc_position_error(
                 [
                     reference_pose.position.x,
                     reference_pose.position.y,
@@ -357,13 +369,35 @@ class VisualServo(Node):
                 ],
                 [pose.position.x, pose.position.y, pose.position.z],
             )
+            orientation_err = math_utils.calculate_orientation_error(
+                [
+                    reference_pose.orientation.w,
+                    reference_pose.orientation.x,
+                    reference_pose.orientation.y,
+                    reference_pose.orientation.z,
+                ],
+                [
+                    pose.orientation.w,
+                    pose.orientation.x,
+                    pose.orientation.y,
+                    pose.orientation.z,
+                ],
+            )
 
-            if distance > self.position_threshold:
+            if (
+                position_err > consistent_pos_tresh
+                or orientation_err > consistent_orient_tresh
+            ):
                 print(
-                    f"Pose inconsistency detected: {distance:.2f} > {self.position_threshold:.2f}"
+                    f"Pose error > tresh: {position_err:.2f} > {consistent_pos_tresh:.2f},"
+                )
+                print(
+                    f"Orientation error > tresh : {orientation_err:.2f} > {consistent_orient_tresh:.2f}"
                 )
                 self.pose_obtained = False
                 return False
+
+        self.last_consistent_pose = self.pose_history[-1]
 
         self.pose_obtained = True
         return True

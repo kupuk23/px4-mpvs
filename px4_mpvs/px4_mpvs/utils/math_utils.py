@@ -26,7 +26,7 @@ def calc_position_error(pos1,pos2):
     position_error = np.linalg.norm([dx, dy, dz])
     return position_error
 
-def calculate_pose_error(q1, q2):
+def calculate_orientation_error(q1, q2):
     
     # Normalize quaternions to ensure unit length
     q1 = q1 / np.linalg.norm(q1)

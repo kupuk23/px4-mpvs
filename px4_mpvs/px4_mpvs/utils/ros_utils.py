@@ -6,6 +6,70 @@ from tf2_geometry_msgs import do_transform_pose
 import rclpy
 import tf_transformations as tft
 
+def generate_pose_stamped(pose, clock, frame_id = 'map' ):
+    """
+    Generate a PoseStamped message from a pose and frame ID.
+    
+    Parameters:
+    -----------
+    pose : Pose
+        The pose to be converted
+    frame_id : str
+        The frame ID for the pose
+    stamp : Time, optional
+        The timestamp for the pose, if None uses the current time
+        
+    Returns:
+    --------
+    PoseStamped
+        The generated PoseStamped message
+    """
+    msg = PoseStamped()
+    msg.header.stamp = clock.now().to_msg()
+    msg.header.frame_id = frame_id
+    msg.pose = pose
+
+    return msg
+
+def generate_goal_from_object_pose(object_pose,tf_buffer, x_offset, clock):
+    """
+    Generate a goal pose from an object's pose by applying an offset and transforming to map frame.
+    
+    Parameters:
+    -----------
+    object_pose : PoseStamped
+        The pose of the object in camera frame
+    tf_buffer : tf2_ros.Buffer
+        TF buffer for coordinate transformations
+    x_offset : float
+        How far in front of the object to place the goal (meters)
+    clock : rclpy.clock.Clock, optional
+        ROS clock for timestamp, if None uses the timestamp from object_pose
+        
+    Returns:
+    --------
+    PoseStamped
+        The goal pose in map frame, or None if transformation failed
+    """
+    frame_id = "camera_link"  # Replace with the actual frame ID if needed
+    T_cam_obj = pose_to_matrix(object_pose)
+    # Transform the pose to map frame and apply offset/rotation
+    T_cam_goal = offset_in_front(T_cam_obj, x_offset)
+
+    transform = lookup_transform(
+        tf_buffer, "map", frame_id
+    )
+    if transform is None:
+        return None
+
+    # Use provided clock or get timestamp from the original pose
+    
+    transformed_pose_stamped = matrix_to_posestamped(
+        T_cam_goal, transform, "map", clock.now().to_msg()
+    )
+
+    return transformed_pose_stamped
+
 def lookup_transform(tf_buffer, target_frame, source_frame):
     
     try:
