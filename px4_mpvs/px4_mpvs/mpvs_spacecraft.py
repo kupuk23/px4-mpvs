@@ -45,7 +45,7 @@ from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
 from tf2_ros import Buffer, TransformListener
-from px4_mpc.utils.ros_utils import lookup_transform
+from px4_mpvs.utils.ros_utils import lookup_transform
 from tf2_geometry_msgs import do_transform_pose
 
 from px4_msgs.msg import OffboardControlMode
@@ -63,6 +63,7 @@ from px4_mpvs.controllers.spacecraft_vs_mpc import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetServoPose
+from vs_msgs.msg import ServoPoses
 
 def vector2PoseMsg(frame_id, position, attitude):
     pose_msg = PoseStamped()
@@ -83,6 +84,8 @@ class SpacecraftMPVS(Node):
 
     def __init__(self):
         super().__init__('spacecraft_mpvs')
+
+        self.camera_frame_id = self.declare_parameter('camera_frame_id', 'camera_link').value
 
         # Get mode; rate, wrench, direct_allocation
         self.mode = self.declare_parameter('mode', 'wrench').value
@@ -159,12 +162,12 @@ class SpacecraftMPVS(Node):
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
-        self.object_pose_sub = self.create_subscription(
-            PoseStamped,
-            '/pose/icp_result',  # Topic for object pose
-            self.object_pose_callback,
-            10
-        )
+        # self.object_pose_sub = self.create_subscription(
+        #     PoseStamped,
+        #     '/pose/icp_result',  # Topic for object pose
+        #     self.object_pose_callback,
+        #     10
+        # )
         self.status_sub = self.create_subscription(
             VehicleStatus,
             f'{self.namespace_prefix}/fmu/out/vehicle_status',
@@ -202,8 +205,8 @@ class SpacecraftMPVS(Node):
             
 
         self.setpoint_pose_sub = self.create_subscription(
-            PoseStamped,
-            '/goal_pose',
+            ServoPoses,
+            f'{self.namespace_prefix}/pbvs_pose',
             self.get_setpoint_pose_callback,
             0
         )
@@ -237,6 +240,8 @@ class SpacecraftMPVS(Node):
             f"{self.namespace_prefix}/px4_mpc/reference",
             10)
 
+        self.obj_pub = self.create_publisher(
+            PoseStamped, f'{self.namespace_prefix}/pose_debug', 10)
         if self.sitl:
             self.odom_pub = self.create_publisher(
                 Odometry,
@@ -244,31 +249,6 @@ class SpacecraftMPVS(Node):
                 qos_profile_pub)
         return
     
-    def object_pose_callback(self, msg: PoseStamped):
-        # Transform object position to map frame
-        transform_cam_map = lookup_transform(
-            self.tf_buffer, "map", msg.header.frame_id
-        )
-        if transform_cam_map is None:
-            self.get_logger().error("Failed to transform object pose")
-            return
-            
-        obj_pose_map = do_transform_pose(msg.pose, transform_cam_map)
-        if obj_pose_map is None:
-            self.get_logger().error("Failed to transform object pose")
-            return
-          
-        if np.all(self.p_obj == 0.0):
-            self.p_obj = np.array([
-                obj_pose_map.position.x, 
-                obj_pose_map.position.y, 
-                obj_pose_map.position.z
-            ])
-
-        # if np.all(self.p_obj != 0.0):
-        #     self.model = SpacecraftVisualServoModel()
-        #     self.mpc = SpacecraftBearingMPC(self.model)
-        #     self.servoing = True
           
 
     def vehicle_attitude_callback(self, msg):
@@ -526,8 +506,25 @@ class SpacecraftMPVS(Node):
         return response
 
 
-    def get_setpoint_pose_callback(self, msg):
-        self.update_setpoint(msg)
+    def get_setpoint_pose_callback(self, msg : ServoPoses):
+        self.update_setpoint(msg.goal_pose_stamped)
+
+          
+        self.p_obj = np.array([msg.obj_pose.position.x,
+                               msg.obj_pose.position.y,
+                               msg.obj_pose.position.z])
+        
+        obj_pose = PoseStamped()
+        obj_pose.header.frame_id = "map"
+        obj_pose.header.stamp = Clock().now().to_msg()
+        obj_pose.pose.position.x = msg.obj_pose.position.x
+        obj_pose.pose.position.y = msg.obj_pose.position.y
+        obj_pose.pose.position.z = msg.obj_pose.position.z
+        obj_pose.pose.orientation.w = msg.obj_pose.orientation.w
+        obj_pose.pose.orientation.x = msg.obj_pose.orientation.x
+        obj_pose.pose.orientation.y = msg.obj_pose.orientation.y
+        obj_pose.pose.orientation.z = msg.obj_pose.orientation.z
+        self.obj_pub.publish(obj_pose)
 
     def update_setpoint(self, msg):
         self.setpoint_position[0] = msg.pose.position.x
@@ -541,10 +538,6 @@ class SpacecraftMPVS(Node):
 
     def servo_srv_callback(self, request : SetServoPose, response: SetServoPose.Response):
         if request.servoing_mode:
-            if self.p_obj is None:
-                self.get_logger().error("Object position is not set")
-                response.success = False
-                return response
             self.update_setpoint(request)
             self.servoing = True
             self.get_logger().info("Starting visual servoing")

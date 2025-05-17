@@ -68,10 +68,29 @@ def generate_goal_from_object_pose(object_pose,tf_buffer, x_offset, clock):
         T_cam_goal, transform, "map", clock.now().to_msg()
     )
 
-    return transformed_pose_stamped
+    transformed_obj_pose = do_transform_pose(
+        object_pose, transform)
+
+    return transformed_pose_stamped, transformed_obj_pose
+
 
 def lookup_transform(tf_buffer, target_frame, source_frame):
-    
+    """
+    Lookup the transform between two frames using the provided tf_buffer.
+    Parameters:
+    ----------
+    tf_buffer : tf2_ros.Buffer
+        The TF buffer to use for looking up transforms
+    target_frame : str
+        The target frame to transform to
+    source_frame : str
+        The source frame to transform from
+    Returns:
+    --------
+    TransformStamped
+        The transform between the two frames, or None if not found
+    """
+    # Check if the transform is available    
     try:
         if not tf_buffer.can_transform(
                         target_frame, source_frame, rclpy.time.Time()

@@ -1,0 +1,2 @@
+geometry_msgs/PoseStamped goal_pose_stamped
+geometry_msgs/Pose obj_pose

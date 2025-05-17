@@ -178,7 +178,7 @@ class SpacecraftVSMPC():
     
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = 200 if servoing_enabled else 0
+        self.w_slack = 7e2 if servoing_enabled else 0
         
     def solve(self, x0, verbose=False, ref=None, object_position=None):
 

@@ -4,6 +4,7 @@ from geometry_msgs.msg import PoseStamped, Pose
 import rclpy.parameter
 import rclpy.parameter_client
 from vs_msgs.srv import SetServoPose
+from vs_msgs.msg import ServoPoses
 from mpc_msgs.srv import SetPose
 from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformListener, TransformBroadcaster
@@ -22,6 +23,7 @@ from rclpy.qos import (
     QoSHistoryPolicy,
 )
 import px4_mpvs.utils.math_utils as math_utils
+
 
 
 class VisualServo(Node):
@@ -56,7 +58,7 @@ class VisualServo(Node):
             qos_profile_sub,
         )
 
-        self.goal_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
+        self.goal_pub = self.create_publisher(ServoPoses, "/pbvs_pose", 10)
 
         # Create a client for the set_pose service
         self.client_servo = self.create_client(
@@ -79,17 +81,19 @@ class VisualServo(Node):
         self.vehicle_attitude = np.zeros(4)  # robot attitude in map
 
         # Add pose history buffer for consistency checking
-        self.pose_history = []
+        self.goal_pose_history = []
+        self.obj_pose_history = []
         self.history_size = 5
         self.goal_pose = Pose()
         self.position_threshold = 0.5
         self.orientation_threshold = 15.0
         self.is_pose_consistent = False
-        self.last_consistent_pose = None  # Last consistent pose
+        self.last_consistent_goal_pose = None  # Last consistent pose
+        self.last_consistent_obj_pose = None  # Last consistent pose
 
         # State variable for docking
         self.success_start_time = None
-        self.success_duration_required = 2.0  # seconds
+        self.success_duration_required = 4.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
         self.x_offset = 0.5
@@ -147,8 +151,12 @@ class VisualServo(Node):
         if self.docking_enabled and self.docking_running:
             # change params in pose_estimation_pcl using dynamic reconfigure
             self.check_docking_status()
-            transformed_pose_stamped = ros_utils.generate_pose_stamped(self.last_consistent_pose, clock=self.get_clock())
-            self.goal_pub.publish(transformed_pose_stamped)
+            map_goal_pose = ros_utils.generate_pose_stamped(self.last_consistent_goal_pose, clock=self.get_clock())
+            msg = ServoPoses()
+            msg.goal_pose_stamped = map_goal_pose
+            msg.obj_pose = self.last_consistent_obj_pose
+
+            self.goal_pub.publish(msg)
             # if time_diff > 1:
             #     self.enable_goicp(False)
             #     self.reset_all_variables()
@@ -157,9 +165,9 @@ class VisualServo(Node):
         # Check if the robot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
         goal_position = np.array(
             [
-                self.last_consistent_pose.position.x,
-                self.last_consistent_pose.position.y,
-                self.last_consistent_pose.position.z,
+                self.last_consistent_goal_pose.position.x,
+                self.last_consistent_goal_pose.position.y,
+                self.last_consistent_goal_pose.position.z,
             ]
         )
         position_err = math_utils.calc_position_error(
@@ -168,10 +176,10 @@ class VisualServo(Node):
 
         goal_orientation = np.array(
             [
-                self.last_consistent_pose.orientation.w,
-                self.last_consistent_pose.orientation.x,
-                self.last_consistent_pose.orientation.y,
-                self.last_consistent_pose.orientation.z,
+                self.last_consistent_goal_pose.orientation.w,
+                self.last_consistent_goal_pose.orientation.x,
+                self.last_consistent_goal_pose.orientation.y,
+                self.last_consistent_goal_pose.orientation.z,
             ]
         )
 
@@ -218,8 +226,9 @@ class VisualServo(Node):
         self.docking_enabled = False
         self.enable_goicp(False)
         self.pose_obtained = False
-        self.pose_history = []
-        # self.last_consistent_pose = None
+        self.goal_pose_history = []
+        self.obj_pose_history = []
+        # self.last_consistent_goal_pose = None
 
         self.stop_servoing()
 
@@ -268,7 +277,6 @@ class VisualServo(Node):
         init_poseStamped.pose.orientation.y = orientation[2]
         init_poseStamped.pose.orientation.z = orientation[3]
 
-        self.goal_pub.publish(init_poseStamped)
         request = SetPose.Request()
         request.pose = init_poseStamped.pose
 
@@ -293,20 +301,23 @@ class VisualServo(Node):
         # Get current ROS time
         self.latest_time = self.get_clock().now()
 
-        transformed_pose_stamped = ros_utils.generate_goal_from_object_pose(
+        map_goal_pose, map_obj_pose = ros_utils.generate_goal_from_object_pose(
                 msg.pose,
                 self.tf_buffer,
                 self.x_offset,
                 self.get_clock(),
             )
-        if transformed_pose_stamped is None:
+        if map_goal_pose is None:
             self.get_logger().warn("Failed to transform pose, skipping")
             return
         
+        
         # Store the pose in history for consistency check
-        self.pose_history.append(transformed_pose_stamped.pose)
-        if len(self.pose_history) > self.history_size:
-            self.pose_history.pop(0)
+        self.obj_pose_history.append(map_obj_pose)
+        self.goal_pose_history.append(map_goal_pose.pose)
+        if len(self.goal_pose_history) > self.history_size:
+            self.goal_pose_history.pop(0)
+            self.obj_pose_history.pop(0)
 
         self.is_pose_consistent = self.check_pose_consistency()
 
@@ -320,13 +331,12 @@ class VisualServo(Node):
             self.get_logger().info("Pose consistent, forwarding to servoing service")
 
 
-            if transformed_pose_stamped is None:
+            if map_goal_pose is None:
                 self.get_logger().warn("Failed to transform pose, skipping")
                 return
-
-            self.goal_pub.publish(transformed_pose_stamped)
+            
             request = SetServoPose.Request()
-            request.pose = transformed_pose_stamped.pose
+            request.pose = map_goal_pose.pose
             request.servoing_mode = True
 
             # Send the request asynchronously
@@ -342,24 +352,24 @@ class VisualServo(Node):
     def check_pose_consistency(self):
         """Check if the recent poses are consistent within threshold"""
 
-        consistent_pos_tresh = 0.3
-        consistent_orient_tresh = 10.0
-        if len(self.pose_history) < self.history_size:
+        consistent_pos_tresh = 0.2
+        consistent_orient_tresh = 5.0
+        if len(self.goal_pose_history) < self.history_size:
             return False
 
         # Check the last self.history_size poses
-        reference_pose = self.pose_history[-1]
+        reference_pose = self.goal_pose_history[-1]
         for i in range(0, -self.history_size, -1):
 
             # if (
             #     i == -self.history_size
             # ):  # add a check for last_consistent_pose on the last iteration
-            #     if self.last_consistent_pose is None:
+            #     if self.last_consistent_goal_pose is None:
             #         break
-            #     pose = self.last_consistent_pose
+            #     pose = self.last_consistent_goal_pose
 
             # else:
-            pose = self.pose_history[i]
+            pose = self.goal_pose_history[i]
 
             position_err = math_utils.calc_position_error(
                 [
@@ -397,7 +407,8 @@ class VisualServo(Node):
                 self.pose_obtained = False
                 return False
 
-        self.last_consistent_pose = self.pose_history[-1]
+        self.last_consistent_goal_pose = self.goal_pose_history[-1]
+        self.last_consistent_obj_pose = self.obj_pose_history[-1]
 
         self.pose_obtained = True
         return True

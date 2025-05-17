@@ -1,6 +1,6 @@
 Panels:
   - Class: rviz_common/Displays
-    Help Height: 78
+    Help Height: 0
     Name: Displays
     Property Tree Widget:
       Expanded:
@@ -13,9 +13,8 @@ Panels:
         - /PointCloud21
         - /TF1
         - /TF1/Frames1
-        - /Pose3
       Splitter Ratio: 0.5
-    Tree Height: 238
+    Tree Height: 316
   - Class: rviz_common/Selection
     Name: Selection
   - Class: rviz_common/Tool Properties
@@ -139,7 +138,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        arrow: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -218,7 +217,7 @@ Visualization Manager:
       Enabled: true
       Head Length: 0.30000001192092896
       Head Radius: 0.10000000149011612
-      Name: Pose
+      Name: icp_result
       Shaft Length: 1
       Shaft Radius: 0.05000000074505806
       Shape: Axes
@@ -238,7 +237,7 @@ Visualization Manager:
       Enabled: true
       Head Length: 0.30000001192092896
       Head Radius: 0.10000000149011612
-      Name: Pose
+      Name: goal_pose
       Shaft Length: 1
       Shaft Radius: 0.05000000074505806
       Shape: Arrow
@@ -263,6 +262,26 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /camera/image
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Pose
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /pose_debug
       Value: true
   Enabled: true
   Global Options:
@@ -310,7 +329,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 5.798120498657227
+      Distance: 4.49006462097168
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -325,10 +344,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1303973197937012
+      Pitch: 1.2503972053527832
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 3.3472466468811035
+      Yaw: 3.3722472190856934
     Saved: ~
 Window Geometry:
   Displays:
