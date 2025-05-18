@@ -60,7 +60,7 @@ def generate_goal_from_object_pose(object_pose,tf_buffer, x_offset, clock):
         tf_buffer, "map", frame_id
     )
     if transform is None:
-        return None
+        return None, None
 
     # Use provided clock or get timestamp from the original pose
     

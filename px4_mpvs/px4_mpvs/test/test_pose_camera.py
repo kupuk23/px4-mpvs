@@ -121,11 +121,14 @@ class VisualServo(Node):
             [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01]
         )
 
+        # [ 0.11974171 -1.50361025  0.35518408] [ 8.64499688e-01  7.21904883e-08 -3.61660879e-09  5.02633214e-01]
+
+
         # Spawn Pose #2
-        # self.init_pos = np.array([0.10324634, -1.0295148, 0])
-        # self.init_att = np.array(
-        #     [9.52709079e-01, 2.49832297e-08, 2.80198997e-09, 3.03883404e-01]
-        # )
+        self.init_pos = np.array([00.11974171 ,-1.50361025, 0])
+        self.init_att = np.array(
+            [8.64499688e-01 , 7.21904883e-08, -3.61660879e-09,  5.02633214e-01]
+        )
 
         self.param_client = self.create_client(
             SetParameters, "pose_estimation_pcl/set_parameters"
@@ -352,8 +355,8 @@ class VisualServo(Node):
     def check_pose_consistency(self):
         """Check if the recent poses are consistent within threshold"""
 
-        consistent_pos_tresh = 0.2
-        consistent_orient_tresh = 5.0
+        consistent_pos_tresh = 0.1
+        consistent_orient_tresh = 3.0
         if len(self.goal_pose_history) < self.history_size:
             return False
 
