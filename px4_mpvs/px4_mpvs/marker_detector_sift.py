@@ -8,6 +8,11 @@ from cv_bridge import CvBridge
 import yaml
 import os
 
+import matplotlib
+matplotlib.use('TkAgg')  # Use non-GUI backend
+
+
+
 class CircleMarkerDetector:
     """
     Class for detecting and tracking circular markers in images.
@@ -23,13 +28,6 @@ class CircleMarkerDetector:
         'min_circularity': 0.8,                 # Minimum circularity threshold
         'max_circularity': 1.5,                 # Maximum circularity threshold
         
-        # Lenient detection parameters
-        'lenient_hsv_lower_white': [0, 0, 150], # Lenient HSV lower threshold
-        'lenient_hsv_upper_white': [180, 80, 255], # Lenient HSV upper threshold
-        'lenient_min_area': 30,                 # Lenient minimum contour area
-        'lenient_min_circularity': 0.6,         # Lenient minimum circularity
-        'lenient_max_circularity': 1.3,         # Lenient maximum circularity
-        'morph_kernel_size': 5,                 # Morphological operations kernel size
         
         # Matching parameters
         'lowes_ratio': 0.85,                    # Lowe's ratio test threshold
@@ -37,7 +35,7 @@ class CircleMarkerDetector:
         'flann_checks': 100                     # Number of checks for FLANN
     }
     
-    def __init__(self, reference_img_path, expected_markers=4, debug=False, vis_debug=False, config_path=None):
+    def __init__(self, reference_img_path, expected_markers=4, debug=False, vis_debug=False, config_path=None, cv_window=None):
         """
         Initialize the detector with a reference image containing the markers.
         
@@ -61,6 +59,10 @@ class CircleMarkerDetector:
         self.debug = debug
         self.vis_debug = vis_debug
         self.cv_bridge = CvBridge()
+
+
+        self.cv_window = cv_window if cv_window is not None else "Marker Detection"
+            
         
         # Load configuration parameters
         self.config = self.DEFAULT_CONFIG.copy()
@@ -130,12 +132,15 @@ class CircleMarkerDetector:
         self.ref_keypoints, self.ref_descriptors = self.sift.detectAndCompute(self.ref_gray, None)
         
         # Filter keypoints to find markers
-        self.ref_markers, self.ref_indices = self._filter_circular_markers(
-            self.ref_img, 
-            self.ref_keypoints, 
-            debug=self.debug, 
-            image_label="Reference"
-        )
+        # self.ref_markers, self.ref_indices = self._filter_circular_markers(
+        #     self.ref_img, 
+        #     self.ref_keypoints, 
+        #     debug=self.debug, 
+        #     image_label="Reference"
+        # )
+
+        self.ref_markers = self.ref_keypoints
+        self.ref_indices = np.arange(len(self.ref_markers))  # All keypoints are considered markers
         
         # Extract descriptors for the markers
         if len(self.ref_indices) > 0:
@@ -190,24 +195,16 @@ class CircleMarkerDetector:
         test_keypoints, test_descriptors = self.sift.detectAndCompute(test_gray, None)
         
         # Filter keypoints to find markers
-        test_markers, test_indices = self._filter_circular_markers(
-            test_img, 
-            test_keypoints, 
-            debug=self.debug, 
-            image_label="Current"
-        )
+        # test_markers, test_indices = self._filter_circular_markers(
+        #     test_img, 
+        #     test_keypoints, 
+        #     debug=self.debug, 
+        #     image_label="Current"
+        # )
         
-        # If not enough markers found, try with more lenient parameters
-        if len(test_markers) < self.expected_markers:
-            if self.debug:
-                print(f"Only found {len(test_markers)} markers, trying with more lenient parameters...")
-            test_markers, test_indices = self._filter_circular_markers_lenient(
-                test_img, 
-                test_keypoints, 
-                debug=self.debug, 
-                image_label="Current (Lenient)"
-            )
-        
+        test_markers = test_keypoints
+        test_indices = np.array(range(len(test_markers)))
+
         # Extract descriptors for the markers
         if len(test_indices) > 0:
             test_marker_descriptors = test_descriptors[test_indices]
@@ -218,7 +215,7 @@ class CircleMarkerDetector:
             return [], False
         
         # Match markers between reference and current image
-        good_matches = self._match_markers(test_marker_descriptors)
+        good_matches = self._match_markers(test_marker_descriptors, test_markers)
         
         if self.debug:
             print(f"Found {len(good_matches)} good matches between reference and current markers")
@@ -308,75 +305,32 @@ class CircleMarkerDetector:
             
         return filtered_keypoints, np.array(indices) if indices else np.array([])
 
-    def _filter_circular_markers_lenient(self, img, keypoints, debug=False, image_label=""):
-        """
-        More lenient version of filter_circular_markers for challenging images.
-        """
-        # Convert to HSV for better color filtering
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        
-        # Get lenient configuration parameters
-        lower_white = np.array(self.config['lenient_hsv_lower_white'])
-        upper_white = np.array(self.config['lenient_hsv_upper_white'])
-        min_area = self.config['lenient_min_area']
-        min_circularity = self.config['lenient_min_circularity']
-        max_circularity = self.config['lenient_max_circularity']
-        kernel_size = self.config['morph_kernel_size']
-        
-        # Threshold the image to get white regions
-        white_mask = cv2.inRange(hsv, lower_white, upper_white)
-        
-        # Apply morphological operations to clean up the mask
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        white_mask = cv2.morphologyEx(white_mask, cv2.MORPH_OPEN, kernel)
-        white_mask = cv2.dilate(white_mask, kernel, iterations=1)
-        
-        # Find contours in the mask
-        contours, _ = cv2.findContours(white_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Filter contours by circularity - VERY LENIENT
-        circular_contours = []
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area > min_area:
-                perimeter = cv2.arcLength(contour, True)
-                if perimeter > 0:
-                    circularity = 4 * np.pi * area / (perimeter * perimeter)
-                    if min_circularity < circularity < max_circularity:
-                        circular_contours.append(contour)
-        
-        # Create a mask of circular regions
-        circle_mask = np.zeros(img.shape[:2], dtype=np.uint8)
-        cv2.drawContours(circle_mask, circular_contours, -1, 255, -1)
-        
-        # Filter keypoints based on their location within circular regions
-        filtered_keypoints = []
-        indices = []
-        
-        for i, kp in enumerate(keypoints):
-            x, y = int(kp.pt[0]), int(kp.pt[1])
-            if 0 <= x < img.shape[1] and 0 <= y < img.shape[0]:
-                if circle_mask[y, x] > 0:
-                    filtered_keypoints.append(kp)
-                    indices.append(i)
-        
-        if debug:
-            print(f"{image_label} image (lenient): Found {len(filtered_keypoints)} keypoints inside {len(circular_contours)} circular regions")
-        
-        if self.vis_debug:
-            # Create debug visualization
-            debug_img = img.copy()
-            cv2.drawContours(debug_img, circular_contours, -1, (0, 255, 0), 2)
-            cv2.drawKeypoints(debug_img, filtered_keypoints, debug_img, color=(0, 0, 255), 
-                             flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+    def _apply_ransac_filtering(self, ref_markers, test_markers, initial_matches):
+        """Apply RANSAC to filter outlier matches and ensure geometric consistency"""
+        if len(initial_matches) < 4:
+            return initial_matches  # Not enough matches for RANSAC
             
-            window_name = f"{image_label} Markers (Lenient)"
-            cv2.imshow(window_name, debug_img)
-            cv2.waitKey(1)  # Update the window without blocking
+        # Extract matched keypoints
+        src_pts = np.float32([ref_markers[m.queryIdx].pt for m in initial_matches]).reshape(-1, 1, 2)
+        dst_pts = np.float32([test_markers[m.trainIdx].pt for m in initial_matches]).reshape(-1, 1, 2)
         
-        return filtered_keypoints, np.array(indices) if indices else np.array([])
+        # Find homography using RANSAC
+        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        
+        if H is None or mask is None:
+            return initial_matches  # RANSAC failed
+            
+        # Filter matches using the mask
+        ransac_matches = [initial_matches[i] for i in range(len(initial_matches)) if mask[i][0] == 1]
+        
+        if self.debug:
+            inlier_ratio = len(ransac_matches) / max(1, len(initial_matches))
+            print(f"RANSAC: {len(ransac_matches)}/{len(initial_matches)} matches kept ({inlier_ratio:.2f})")
+        
+        return ransac_matches
 
-    def _match_markers(self, test_marker_descriptors):
+
+    def _match_markers(self, test_marker_descriptors, test_markers):
         """
         Match markers between reference and test images.
         
@@ -410,10 +364,124 @@ class CircleMarkerDetector:
                 # Use whichever found more good matches
                 good_matches = flann_good if len(flann_good) > len(bf_good) else bf_good
                 
+                # good_matches = self._apply_ransac_filtering(
+                #     self.ref_markers, 
+                #     test_markers, 
+                #     good_matches
+                # )
+
             except Exception as e:
                 if self.debug:
                     print(f"Error during marker matching: {e}")
         
         return good_matches
 
-    # ... The rest of the class remains the same
+    
+    def _extract_marker_positions(self, test_markers, good_matches):
+        """
+        Extract and sort marker positions from matches.
+        
+        Args:
+            test_markers: Detected markers in test image
+            good_matches: Good matches between reference and test markers
+            
+        Returns:
+            sorted_positions: List of (x,y) positions of the markers, sorted
+        """
+        # Extract positions from matches
+        positions = []
+        
+        for match in good_matches:
+            # Get the index of the matched test keypoint
+            test_idx = match.trainIdx
+            
+            if test_idx < len(test_markers):
+                # Get the keypoint
+                kp = test_markers[test_idx]
+                # Add its position to our list
+                positions.append((kp.pt[0], kp.pt[1]))
+        
+        # Ensure we only return up to expected_markers positions
+        positions = positions[:self.expected_markers]
+        
+        # Sort markers by position (left to right, top to bottom)
+        sorted_positions = self._sort_marker_positions(positions)
+        
+        return sorted_positions
+
+    def _sort_marker_positions(self, positions):
+        """
+        Sort marker positions from left to right, top to bottom.
+        
+        Args:
+            positions: List of (x,y) positions
+            
+        Returns:
+            sorted_positions: Sorted list of positions
+        """
+        if not positions:
+            return []
+            
+        # Calculate average y-coordinate
+        if len(positions) >= 2:
+            avg_y = sum(p[1] for p in positions) / len(positions)
+            
+            # Split into top and bottom groups
+            top_markers = [p for p in positions if p[1] < avg_y]
+            bottom_markers = [p for p in positions if p[1] >= avg_y]
+            
+            # Sort each group by x-coordinate
+            top_markers.sort(key=lambda p: p[0])
+            bottom_markers.sort(key=lambda p: p[0])
+            
+            # Combine the sorted groups
+            sorted_positions = top_markers + bottom_markers
+        else:
+            # If only one marker, just return it
+            sorted_positions = positions
+        
+        return sorted_positions
+
+    def _show_reference_markers(self):
+        """
+        Display the reference image with detected markers.
+        """
+        if self.ref_img is not None and self.ref_markers:
+            debug_img = self.ref_img.copy()
+            cv2.drawKeypoints(debug_img, self.ref_markers, debug_img, color=(0, 0, 255),
+                             flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            
+            cv2.imshow("Reference Markers", debug_img)
+            cv2.waitKey(1)
+
+    def _visualize_matches(self, test_img, test_markers, good_matches):
+        """
+        Visualize matches between reference and test images.
+        
+        Args:
+            test_img: Current image
+            test_markers: Detected markers in test image
+            good_matches: Good matches between reference and test
+        """
+        if good_matches:
+            # Draw matches
+            result = cv2.drawMatches(self.ref_img, self.ref_markers, test_img, test_markers, 
+                                    good_matches, None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            
+            cv2.imshow(self.cv_window, result)
+            cv2.waitKey(1)
+
+    def calculate_interaction_matrix(self, marker_positions, camera_params):
+        """
+        Calculate the interaction matrix based on marker positions.
+        To be implemented in the next step.
+        """
+        # Placeholder - will be implemented later
+        pass
+        
+    def __del__(self):
+        """
+        Clean up any resources when the object is deleted.
+        """
+        if self.vis_debug:
+            cv2.destroyAllWindows()

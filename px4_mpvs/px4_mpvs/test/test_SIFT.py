@@ -50,7 +50,6 @@ def detect_markers(reference_img_path, test_img_path, visualization=True, debug=
     test_keypoints, test_descriptors = sift.detectAndCompute(test_gray, None)
     
     if debug:
-        # Show all SIFT keypoints before filtering
         ref_kp_img = cv2.drawKeypoints(ref_img, ref_keypoints, None, color=(0, 255, 0), 
                                        flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
         test_kp_img = cv2.drawKeypoints(test_img, test_keypoints, None, color=(0, 255, 0), 
@@ -72,6 +71,12 @@ def detect_markers(reference_img_path, test_img_path, visualization=True, debug=
     ref_marker_descriptors = ref_descriptors[ref_indices] if len(ref_indices) > 0 else []
     test_marker_descriptors = test_descriptors[test_indices] if len(test_indices) > 0 else []
     
+    # ref_marker_descriptors = ref_descriptors
+    # test_marker_descriptors = test_descriptors
+
+    ref_markers = ref_keypoints
+    test_markers = test_keypoints
+
     # Match descriptors using FLANN
     good_matches = []
     if len(ref_marker_descriptors) > 0 and len(test_marker_descriptors) > 0:
@@ -87,9 +92,28 @@ def detect_markers(reference_img_path, test_img_path, visualization=True, debug=
             
         # Filter good matches using Lowe's ratio test
         good_matches = []
-        for m, n in bf_matches:
-            if m.distance < 0.9 * n.distance:  # Slightly more lenient ratio
+        for m, n in matches:
+            if m.distance < 0.7 * n.distance:  # Slightly more lenient ratio
                 good_matches.append(m)
+
+        # Apply RANSAC to filter outliers and enforce geometric consistency
+    if len(good_matches) >= 4:  # Need minimum 4 points for homography
+        # Extract matched keypoints
+        src_pts = np.float32([ref_markers[m.queryIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        dst_pts = np.float32([test_markers[m.trainIdx].pt for m in good_matches]).reshape(-1, 1, 2)
+        
+        # Find homography using RANSAC
+        H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+        
+        # Filter matches using the mask from RANSAC
+        ransac_matches = [good_matches[i] for i in range(len(good_matches)) if mask[i][0] == 1]
+        
+        if debug:
+            print(f"RANSAC filtered {len(good_matches) - len(ransac_matches)} outliers")
+            print(f"Remaining matches after RANSAC: {len(ransac_matches)}")
+        
+        # Replace good_matches with RANSAC-filtered matches
+        good_matches = ransac_matches
     
     if visualization and good_matches:
         # Draw matches
@@ -201,10 +225,11 @@ def filter_circular_markers(img, keypoints, debug=False, image_label=""):
     return filtered_keypoints, np.array(indices)
 
 
+
 def main():
     # Example usage
-    reference_img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/aligned_image.jpg"
-    test_img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/docked_image.jpg"
+    reference_img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/ref_image.jpg"
+    test_img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/aligned_image.jpg"
     
     matches, ref_markers, test_markers = detect_markers(reference_img_path, test_img_path, debug=True)
     

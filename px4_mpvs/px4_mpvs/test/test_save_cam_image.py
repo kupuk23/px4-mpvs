@@ -7,33 +7,36 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "docked_image"
+filename = "aligned_image"
+
 
 class SaveImage(Node):
     def __init__(self):
-            super().__init__("save_image_node")
+        super().__init__("save_image_node")
 
-            # Create subscriber to the image topic
-            self.subscription = self.create_subscription(
-                CompressedImage, "/camera/image/compressed", self.image_callback, 10
-            )
+        # Create subscriber to the image topic
+        self.subscription = self.create_subscription(
+            CompressedImage, "/camera/image/compressed", self.image_callback, 10
+        )
 
-            # Initialize depth image
-            self.depth_image = None
+        # Initialize depth image
+        self.depth_image = None
 
-            # Initialize the OpenCV bridge
-            self.bridge = CvBridge()
+        # Initialize the OpenCV bridge
+        self.bridge = CvBridge()
 
     def image_callback(self, msg=CompressedImage):
         try:
             # Convert ROS Image message to OpenCV image
             np_arr = np.frombuffer(msg.data, np.uint8)
             cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-            cv2.imwrite(f'/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/{filename}.jpg', cv_image)
+            cv2.imwrite(
+                f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/{filename}.jpg",
+                cv_image,
+            )
         except Exception as e:
             self.get_logger().error(f"Error converting image: {e}")
             return
-
 
 
 def main():
