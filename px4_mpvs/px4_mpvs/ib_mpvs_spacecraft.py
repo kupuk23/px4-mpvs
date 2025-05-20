@@ -39,8 +39,14 @@ import rclpy
 import numpy as np
 from rclpy.node import Node
 from rclpy.clock import Clock
-from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy, QoSDurabilityPolicy
+from rclpy.qos import (
+    QoSProfile,
+    QoSReliabilityPolicy,
+    QoSHistoryPolicy,
+    QoSDurabilityPolicy,
+)
 
+from std_msgs.msg import Float32MultiArray
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
@@ -65,6 +71,7 @@ from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetServoPose
 from vs_msgs.msg import ServoPoses
 
+
 def vector2PoseMsg(frame_id, position, attitude):
     pose_msg = PoseStamped()
     # msg.header.stamp = Clock().now().nanoseconds / 1000
@@ -83,34 +90,38 @@ def vector2PoseMsg(frame_id, position, attitude):
 class SpacecraftIBMPVS(Node):
 
     def __init__(self):
-        super().__init__('spacecraft_ib_mpvs')
+        super().__init__("spacecraft_ib_mpvs")
 
-        self.camera_frame_id = self.declare_parameter('camera_frame_id', 'camera_link').value
+        self.camera_frame_id = self.declare_parameter(
+            "camera_frame_id", "camera_link"
+        ).value
 
         # Get mode; rate, wrench, direct_allocation
-        self.mode = self.declare_parameter('mode', 'wrench').value
+        self.mode = self.declare_parameter("mode", "wrench").value
         self.sitl = True
 
         # Get namespace
-        self.namespace = self.declare_parameter('namespace', '').value
-        self.namespace_prefix = f'/{self.namespace}' if self.namespace else ''
+        self.namespace = self.declare_parameter("namespace", "").value
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Get setpoint from rviz (true/false)
-        self.setpoint_from_rviz = self.declare_parameter('setpoint_from_rviz', False).value
+        self.setpoint_from_rviz = self.declare_parameter(
+            "setpoint_from_rviz", False
+        ).value
 
         # QoS profiles
         qos_profile_pub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=0
+            depth=0,
         )
 
         qos_profile_sub = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             durability=QoSDurabilityPolicy.VOLATILE,
             history=QoSHistoryPolicy.KEEP_LAST,
-            depth=0
+            depth=0,
         )
 
         # Setup publishers and subscribers
@@ -122,22 +133,28 @@ class SpacecraftIBMPVS(Node):
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
 
         # Create Spacecraft and controller objects
-        if self.mode == 'rate':
+        if self.mode == "rate":
             from px4_mpc.models.spacecraft_rate_model import SpacecraftRateModel
             from px4_mpc.controllers.spacecraft_rate_mpc import SpacecraftRateMPC
+
             self.model = SpacecraftRateModel()
             self.mpc = SpacecraftRateMPC(self.model)
-        elif self.mode == 'wrench':
+        elif self.mode == "wrench":
             from px4_mpc.models.spacecraft_wrench_model import SpacecraftWrenchModel
             from px4_mpc.controllers.spacecraft_wrench_mpc import SpacecraftWrenchMPC
+
             self.model = SpacecraftWrenchModel()
             self.mpc = SpacecraftWrenchMPC(self.model)
-        elif self.mode == 'direct_allocation':
-            
-            from px4_mpc.models.spacecraft_direct_allocation_model import SpacecraftDirectAllocationModel
-            from px4_mpc.controllers.spacecraft_direct_allocation_mpc import SpacecraftDirectAllocationMPC
+        elif self.mode == "direct_allocation":
 
-            self.model = SpacecraftVSModel()
+            from px4_mpc.models.spacecraft_direct_allocation_model import (
+                SpacecraftDirectAllocationModel,
+            )
+            from px4_mpc.controllers.spacecraft_direct_allocation_mpc import (
+                SpacecraftDirectAllocationMPC,
+            )
+
+            self.model = SpacecraftVSModel(mode = 'pbvs')
             self.mpc = SpacecraftVSMPC(self.model)
 
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
@@ -149,18 +166,15 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.0, 0.0, 0.0]) # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0]) # invered z and y axis
+        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
+        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis
 
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
+        self.p_markers = np.array([0.0, 0.0, 0.0])  # object position in camera frame
         self.servoing = False
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        
-
-
-
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
@@ -170,89 +184,104 @@ class SpacecraftIBMPVS(Node):
         #     self.object_pose_callback,
         #     10
         # )
+
+        self.markers_sub = self.create_subscription(
+            Float32MultiArray, "/detected_markers", self.marker_callback, 10
+        )
+
         self.status_sub = self.create_subscription(
             VehicleStatus,
-            f'{self.namespace_prefix}/fmu/out/vehicle_status',
+            f"{self.namespace_prefix}/fmu/out/vehicle_status",
             self.vehicle_status_callback,
-            qos_profile_sub)
+            qos_profile_sub,
+        )
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
-            f'{self.namespace_prefix}/fmu/out/vehicle_attitude',
+            f"{self.namespace_prefix}/fmu/out/vehicle_attitude",
             self.vehicle_attitude_callback,
-            qos_profile_sub)
+            qos_profile_sub,
+        )
         self.angular_vel_sub = self.create_subscription(
             VehicleAngularVelocity,
-            f'{self.namespace_prefix}/fmu/out/vehicle_angular_velocity',
+            f"{self.namespace_prefix}/fmu/out/vehicle_angular_velocity",
             self.vehicle_angular_velocity_callback,
-            qos_profile_sub)
+            qos_profile_sub,
+        )
         self.local_position_sub = self.create_subscription(
             VehicleLocalPosition,
-            f'{self.namespace_prefix}/fmu/out/vehicle_local_position',
+            f"{self.namespace_prefix}/fmu/out/vehicle_local_position",
             self.vehicle_local_position_callback,
-            qos_profile_sub)
-        
+            qos_profile_sub,
+        )
+
         self.set_servo_srv = self.create_service(
-                SetServoPose,
-                f'{self.namespace_prefix}/set_servo_pose',
-                self.servo_srv_callback
-            )
+            SetServoPose,
+            f"{self.namespace_prefix}/set_servo_pose",
+            self.servo_srv_callback,
+        )
 
         if self.setpoint_from_rviz:
             self.set_pose_srv = self.create_service(
-                SetPose,
-                f'{self.namespace_prefix}/set_pose',
-                self.add_set_pos_callback
+                SetPose, f"{self.namespace_prefix}/set_pose", self.add_set_pos_callback
             )
-            
 
         self.setpoint_pose_sub = self.create_subscription(
             ServoPoses,
-            f'{self.namespace_prefix}/pbvs_pose',
+            f"{self.namespace_prefix}/pbvs_pose",
             self.get_setpoint_pose_callback,
-            0
+            0,
         )
 
         self.publisher_offboard_mode = self.create_publisher(
             OffboardControlMode,
-            f'{self.namespace_prefix}/fmu/in/offboard_control_mode',
-            qos_profile_pub)
+            f"{self.namespace_prefix}/fmu/in/offboard_control_mode",
+            qos_profile_pub,
+        )
         self.publisher_rates_setpoint = self.create_publisher(
             VehicleRatesSetpoint,
-            f'{self.namespace_prefix}/fmu/in/vehicle_rates_setpoint',
-            qos_profile_pub)
+            f"{self.namespace_prefix}/fmu/in/vehicle_rates_setpoint",
+            qos_profile_pub,
+        )
         self.publisher_direct_actuator = self.create_publisher(
             ActuatorMotors,
-            f'{self.namespace_prefix}/fmu/in/actuator_motors',
-            qos_profile_pub)
+            f"{self.namespace_prefix}/fmu/in/actuator_motors",
+            qos_profile_pub,
+        )
         self.publisher_thrust_setpoint = self.create_publisher(
             VehicleThrustSetpoint,
-            f'{self.namespace_prefix}/fmu/in/vehicle_thrust_setpoint',
-            qos_profile_pub)
+            f"{self.namespace_prefix}/fmu/in/vehicle_thrust_setpoint",
+            qos_profile_pub,
+        )
         self.publisher_torque_setpoint = self.create_publisher(
             VehicleTorqueSetpoint,
-            f'{self.namespace_prefix}/fmu/in/vehicle_torque_setpoint',
-            qos_profile_pub)
+            f"{self.namespace_prefix}/fmu/in/vehicle_torque_setpoint",
+            qos_profile_pub,
+        )
         self.predicted_path_pub = self.create_publisher(
-            Path,
-            f'{self.namespace_prefix}/px4_mpc/predicted_path',
-            10)
+            Path, f"{self.namespace_prefix}/px4_mpc/predicted_path", 10
+        )
         self.reference_pub = self.create_publisher(
-            Marker,
-            f"{self.namespace_prefix}/px4_mpc/reference",
-            10)
+            Marker, f"{self.namespace_prefix}/px4_mpc/reference", 10
+        )
 
         self.obj_pub = self.create_publisher(
-            PoseStamped, f'{self.namespace_prefix}/pose_debug', 10)
+            PoseStamped, f"{self.namespace_prefix}/pose_debug", 10
+        )
         if self.sitl:
             self.odom_pub = self.create_publisher(
-                Odometry,
-                f'{self.namespace_prefix}/odom',
-                qos_profile_pub)
+                Odometry, f"{self.namespace_prefix}/odom", qos_profile_pub
+            )
         return
-    
-          
 
+    def marker_callback(self, msg):
+        # Receive the detected markers, unflatten the array into x y z
+        
+        #convert to int16 for the x and y coordinates
+        self.p_markers[0:1, :] = self.p_markers[0:1, :].astype(np.int16)
+        
+
+    
     def vehicle_attitude_callback(self, msg):
         # TODO: handle NED->ENU transformation
         self.vehicle_attitude[0] = msg.q[0]
@@ -310,9 +339,9 @@ class SpacecraftIBMPVS(Node):
         thrust_command = thrust_rates[0:3]
         rates_setpoint_msg = VehicleRatesSetpoint()
         rates_setpoint_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-        rates_setpoint_msg.roll  = float(thrust_rates[3])
+        rates_setpoint_msg.roll = float(thrust_rates[3])
         rates_setpoint_msg.pitch = -float(thrust_rates[4])
-        rates_setpoint_msg.yaw   = -float(thrust_rates[5])
+        rates_setpoint_msg.yaw = -float(thrust_rates[5])
         rates_setpoint_msg.thrust_body[0] = float(thrust_command[0])
         rates_setpoint_msg.thrust_body[1] = -float(thrust_command[1])
         rates_setpoint_msg.thrust_body[2] = -float(thrust_command[2])
@@ -397,89 +426,113 @@ class SpacecraftIBMPVS(Node):
         offboard_msg.attitude = False
         offboard_msg.body_rate = False
         offboard_msg.direct_actuator = False
-        if self.mode == 'rate':
+        if self.mode == "rate":
             offboard_msg.body_rate = True
-        elif self.mode == 'direct_allocation':
+        elif self.mode == "direct_allocation":
             offboard_msg.direct_actuator = True
-        elif self.mode == 'wrench':
+        elif self.mode == "wrench":
             offboard_msg.thrust_and_torque = True
         self.publisher_offboard_mode.publish(offboard_msg)
 
         # Set state and references for each MPC
-        if self.mode == 'rate':
-            x0 = np.array([self.vehicle_local_position[0],
-                           self.vehicle_local_position[1],
-                           self.vehicle_local_position[2],
-                           self.vehicle_local_velocity[0],
-                           self.vehicle_local_velocity[1],
-                           self.vehicle_local_velocity[2],
-                           self.vehicle_attitude[0],
-                           self.vehicle_attitude[1],
-                           self.vehicle_attitude[2],
-                           self.vehicle_attitude[3]]).reshape(10, 1)
-            ref = np.concatenate((self.setpoint_position,       # position
-                                  np.zeros(3),                  # velocity
-                                  self.setpoint_attitude,       # attitude
-                                  np.zeros(6)), axis=0)         # inputs reference (F, w)
+        if self.mode == "rate":
+            x0 = np.array(
+                [
+                    self.vehicle_local_position[0],
+                    self.vehicle_local_position[1],
+                    self.vehicle_local_position[2],
+                    self.vehicle_local_velocity[0],
+                    self.vehicle_local_velocity[1],
+                    self.vehicle_local_velocity[2],
+                    self.vehicle_attitude[0],
+                    self.vehicle_attitude[1],
+                    self.vehicle_attitude[2],
+                    self.vehicle_attitude[3],
+                ]
+            ).reshape(10, 1)
+            ref = np.concatenate(
+                (
+                    self.setpoint_position,  # position
+                    np.zeros(3),  # velocity
+                    self.setpoint_attitude,  # attitude
+                    np.zeros(6),
+                ),
+                axis=0,
+            )  # inputs reference (F, w)
             ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-        elif self.mode == 'wrench':
-            x0 = np.array([self.vehicle_local_position[0],
-                           self.vehicle_local_position[1],
-                           self.vehicle_local_position[2],
-                           self.vehicle_local_velocity[0],
-                           self.vehicle_local_velocity[1],
-                           self.vehicle_local_velocity[2],
-                           self.vehicle_attitude[0],
-                           self.vehicle_attitude[1],
-                           self.vehicle_attitude[2],
-                           self.vehicle_attitude[3],
-                           self.vehicle_angular_velocity[0],
-                           self.vehicle_angular_velocity[1],
-                           self.vehicle_angular_velocity[2]]).reshape(13, 1)
-            ref = np.concatenate((self.setpoint_position,       # position
-                                  np.zeros(3),                  # velocity
-                                  self.setpoint_attitude,       # attitude
-                                  np.zeros(3),                  # angular velocity
-                                  np.zeros(3)), axis=0)         # inputs reference (F, torque)
+        elif self.mode == "wrench":
+            x0 = np.array(
+                [
+                    self.vehicle_local_position[0],
+                    self.vehicle_local_position[1],
+                    self.vehicle_local_position[2],
+                    self.vehicle_local_velocity[0],
+                    self.vehicle_local_velocity[1],
+                    self.vehicle_local_velocity[2],
+                    self.vehicle_attitude[0],
+                    self.vehicle_attitude[1],
+                    self.vehicle_attitude[2],
+                    self.vehicle_attitude[3],
+                    self.vehicle_angular_velocity[0],
+                    self.vehicle_angular_velocity[1],
+                    self.vehicle_angular_velocity[2],
+                ]
+            ).reshape(13, 1)
+            ref = np.concatenate(
+                (
+                    self.setpoint_position,  # position
+                    np.zeros(3),  # velocity
+                    self.setpoint_attitude,  # attitude
+                    np.zeros(3),  # angular velocity
+                    np.zeros(3),
+                ),
+                axis=0,
+            )  # inputs reference (F, torque)
             ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-        elif self.mode == 'direct_allocation':
-            x0 = np.array([self.vehicle_local_position[0],
-                           self.vehicle_local_position[1],
-                           self.vehicle_local_position[2],
-                           self.vehicle_local_velocity[0],
-                           self.vehicle_local_velocity[1],
-                           self.vehicle_local_velocity[2],
-                           self.vehicle_attitude[0],
-                           self.vehicle_attitude[1],
-                           self.vehicle_attitude[2],
-                           self.vehicle_attitude[3],
-                           self.vehicle_angular_velocity[0],
-                           self.vehicle_angular_velocity[1],
-                           self.vehicle_angular_velocity[2]]).reshape(13, 1)
-            ref = np.concatenate((self.setpoint_position,       # position
-                                  np.zeros(3),                  # velocity
-                                  self.setpoint_attitude,       # attitude
-                                  np.zeros(3),                  # angular velocity
-                                  np.zeros(4)), axis=0)         # inputs reference (u1, ..., u4) for 2D platform
+        elif self.mode == "direct_allocation":
+            x0 = np.array(
+                [
+                    self.vehicle_local_position[0],
+                    self.vehicle_local_position[1],
+                    self.vehicle_local_position[2],
+                    self.vehicle_local_velocity[0],
+                    self.vehicle_local_velocity[1],
+                    self.vehicle_local_velocity[2],
+                    self.vehicle_attitude[0],
+                    self.vehicle_attitude[1],
+                    self.vehicle_attitude[2],
+                    self.vehicle_attitude[3],
+                    self.vehicle_angular_velocity[0],
+                    self.vehicle_angular_velocity[1],
+                    self.vehicle_angular_velocity[2],
+                ]
+            ).reshape(13, 1)
+            ref = np.concatenate(
+                (
+                    self.setpoint_position,  # position
+                    np.zeros(3),  # velocity
+                    self.setpoint_attitude,  # attitude
+                    np.zeros(3),  # angular velocity
+                    np.zeros(4),
+                ),
+                axis=0,
+            )  # inputs reference (u1, ..., u4) for 2D platform
             ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
         else:
-            raise ValueError(f'Invalid mode: {self.mode}')
+            raise ValueError(f"Invalid mode: {self.mode}")
 
         # Solve MPC
         # check if p_obj is zeros
         if not self.servoing:
-            # u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref)
         else:
             # print ("obj position: ", self.p_obj)
-            u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
+            u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
         # print error from x_pred with setpoint
         # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
         # self.get_logger().info(f'Linear Error: {lin_err:.3f}')
         # ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
         # self.get_logger().info(f'Angular Error: {ang_err:.3f}')
-
-
 
         # Colect data
         idx = 0
@@ -487,19 +540,23 @@ class SpacecraftIBMPVS(Node):
         for predicted_state in x_pred:
             idx = idx + 1
             # Publish time history of the vehicle path
-            predicted_pose_msg = vector2PoseMsg('map', predicted_state[0:3], self.setpoint_attitude)
+            predicted_pose_msg = vector2PoseMsg(
+                "map", predicted_state[0:3], self.setpoint_attitude
+            )
             predicted_path_msg.header = predicted_pose_msg.header
             predicted_path_msg.poses.append(predicted_pose_msg)
         self.predicted_path_pub.publish(predicted_path_msg)
         self.publish_reference(self.reference_pub, self.setpoint_position)
 
-
         if self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-            if self.mode == 'rate':
+            if self.mode == "rate":
                 self.publish_rate_setpoint(u_pred)
-            elif self.mode == 'direct_allocation' or self.mode == 'direct_allocation_trajectory':
+            elif (
+                self.mode == "direct_allocation"
+                or self.mode == "direct_allocation_trajectory"
+            ):
                 self.publish_direct_actuator_setpoint(u_pred)
-            elif self.mode == 'wrench':
+            elif self.mode == "wrench":
                 self.publish_wrench_setpoint(u_pred)
 
     def add_set_pos_callback(self, request, response):
@@ -507,15 +564,13 @@ class SpacecraftIBMPVS(Node):
         print("Setpoint from RVIZ: ", self.setpoint_position, self.setpoint_attitude)
         return response
 
-
-    def get_setpoint_pose_callback(self, msg : ServoPoses):
+    def get_setpoint_pose_callback(self, msg: ServoPoses):
         self.update_setpoint(msg.goal_pose_stamped)
 
-          
-        self.p_obj = np.array([msg.obj_pose.position.x,
-                               msg.obj_pose.position.y,
-                               msg.obj_pose.position.z])
-        
+        self.p_obj = np.array(
+            [msg.obj_pose.position.x, msg.obj_pose.position.y, msg.obj_pose.position.z]
+        )
+
         obj_pose = PoseStamped()
         obj_pose.header.frame_id = "map"
         obj_pose.header.stamp = Clock().now().to_msg()
@@ -537,8 +592,9 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude[2] = msg.pose.orientation.y
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
-
-    def servo_srv_callback(self, request : SetServoPose, response: SetServoPose.Response):
+    def servo_srv_callback(
+        self, request: SetServoPose, response: SetServoPose.Response
+    ):
         if request.servoing_mode:
             self.update_setpoint(request)
             self.servoing = True
@@ -546,9 +602,9 @@ class SpacecraftIBMPVS(Node):
         else:
             self.servoing = False
             self.get_logger().info("Stopping visual servoing")
-            
+
         self.mpc.update_constraints(self.servoing)
-        print ("Servoing mode: ", self.servoing)
+        print("Servoing mode: ", self.servoing)
         return response
 
 
@@ -563,5 +619,5 @@ def main(args=None):
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

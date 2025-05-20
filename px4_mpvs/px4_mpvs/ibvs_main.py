@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Float32MultiArray
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image, CompressedImage
 from geometry_msgs.msg import Twist
@@ -41,8 +42,9 @@ class MarkerDetectorNode(Node):
             SetBool, "enable_ibvs", self.enable_ibvs_callback
         )
 
-        # Create publisher for detected markers
-        self.marker_pub = self.create_publisher(Image, "/detected_markers", 10)
+        self.markers_pub = self.create_publisher(
+            Float32MultiArray, "/detected_markers", 10
+        )
 
         # Initialization for IBVS
         self.depth_image = None
@@ -68,7 +70,7 @@ class MarkerDetectorNode(Node):
                 [210, 407],  # bottom-left
                 [440, 404],  # bottom-right
             ],
-            dtype=np.float32,
+            dtype=np.int16,
         )
 
         # Set target points in the detector
@@ -113,26 +115,22 @@ class MarkerDetectorNode(Node):
             # Detect circles
             markers = self.detector.detect(image)
             if markers is not None and len(markers) == 4:
-                self.get_logger().debug(f"Detected 4 markers")
+                # self.get_logger().info(f"Detected {len(markers)} markers")
+                Z = np.array(
+                    [
+                        self.depth_image[int(point[1]), int(point[0])]
+                        for point in markers
+                    ]
+                )
 
-                # Draw circles on image for visualization
-                viz_img = image.copy()
-                for i, (x, y) in enumerate(markers):
-                    cv2.circle(viz_img, (int(x), int(y)), 10, (0, 0, 255), -1)
-                    cv2.putText(
-                        viz_img,
-                        str(i),
-                        (int(x) + 15, int(y)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 255, 0),
-                        2,
-                    )
+                #append the Z values to the markers
+                markers = np.hstack((markers, Z.reshape(-1, 1)))
 
-                # Publish visualization
-                self.marker_pub.publish(self.bridge.cv2_to_imgmsg(viz_img, "bgr8"))
-            else:
-                self.get_logger().warn("Failed to detect all 4 markers")
+                # send the markers and depth to the IBVS controller
+                markers_msg = Float32MultiArray()
+                markers_msg.data = markers.flatten()
+
+                self.markers_pub.publish(markers_msg)
 
         except Exception as e:
             self.get_logger().error(f"Error processing image: {str(e)}")

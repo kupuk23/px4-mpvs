@@ -36,7 +36,8 @@ import casadi as cs
 import numpy as np
 
 class SpacecraftVSModel():
-    def __init__(self):
+    def __init__(self, mode = 'pbvs'):
+        self.mode = mode
         self.name = 'spacecraft_visual_servo_model'
 
         # constants
@@ -71,6 +72,21 @@ class SpacecraftVSModel():
             rot_mat = q_to_rot_mat(q)
 
             return cs.mtimes(rot_mat, v)
+        
+        def define_visual_constraint(p_obj, p, q):
+
+
+            r_I = p_obj - p  # Vector from robot to object in inertial frame
+            
+            # Transform to body frame using the rotation matrix
+            r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q)), r_I)
+
+            # Compute vector norm
+            r_B_norm = cs.sqrt(r_B[0]**2 + r_B[1]**2 + r_B[2]**2)  # More explicit form
+            cos_theta_max = cs.cos(np.deg2rad(self.theta_max_deg))
+            g_x = cos_theta_max * r_B_norm - r_B[0]
+
+            return g_x
 
         model = AcadosModel()
 
@@ -81,32 +97,29 @@ class SpacecraftVSModel():
         v      = cs.MX.sym('v', 3)
         q      = cs.MX.sym('q', 4)
         w      = cs.MX.sym('w', 3)
-        p_obj = cs.MX.sym('p_obj', 3)  # Object position in inertial frame
 
         x = cs.vertcat(p, v, q, w)
 
-        # compute bearing inequality
-
-        r_I = p_obj - p  # Vector from robot to object in inertial frame
-        
-        # Transform to body frame using the rotation matrix
-        r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q)), r_I)
-
-        # Compute vector norm
-        r_B_norm = cs.sqrt(r_B[0]**2 + r_B[1]**2 + r_B[2]**2)  # More explicit form
-        cos_theta_max = cs.cos(np.deg2rad(self.theta_max_deg))
-        g_x = cos_theta_max * r_B_norm - r_B[0]
-
-        # theta_err = cs.fmax(0, g_x)  # Only penalize constraint violations
-        # bearing_penalty = V * theta_err**2
+        if self.mode == 'pbvs':
+            # compute bearing inequality
 
 
-        # model.bearing_penalty = bearing_penalty
-        # model.bearing_penalty_e = bearing_penalty
+            p_obj = cs.MX.sym('p_obj', 3)  # Object position in inertial frame
 
-        # Define nonlinear constraint
-        model.con_h_expr = g_x
-        model.con_h_expr_e = g_x        
+            g_x = define_visual_constraint(p_obj, p, q)
+
+            # Define nonlinear constraint
+            model.con_h_expr = g_x
+            model.con_h_expr_e = g_x     
+
+             # Add model parameters
+            model_params = cs.vertcat(p_obj)
+            model.p = model_params  # Use object position as parameter
+
+        else:
+            # Define Image Dynamics here
+
+            pass  
 
         u = cs.MX.sym('u', 4)
         D_mat = cs.MX.zeros(2, 4)
@@ -155,9 +168,7 @@ class SpacecraftVSModel():
         model.u = u
         model.name = self.name
 
-        # Add model parameters
-        model_params = cs.vertcat(p_obj)
-        model.p = model_params  # Use object position as parameter
+       
         
 
         

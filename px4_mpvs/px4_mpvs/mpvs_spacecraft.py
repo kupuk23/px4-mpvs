@@ -137,7 +137,7 @@ class SpacecraftMPVS(Node):
             from px4_mpc.models.spacecraft_direct_allocation_model import SpacecraftDirectAllocationModel
             from px4_mpc.controllers.spacecraft_direct_allocation_mpc import SpacecraftDirectAllocationMPC
 
-            self.model = SpacecraftVSModel()
+            self.model = SpacecraftVSModel(mode='pbvs')
             self.mpc = SpacecraftVSMPC(self.model)
 
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
@@ -466,11 +466,11 @@ class SpacecraftMPVS(Node):
         # Solve MPC
         # check if p_obj is zeros
         if not self.servoing:
-            # u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
+            # u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref)
         else:
             # print ("obj position: ", self.p_obj)
-            u_pred, x_pred = self.mpc.solve(x0, ref=ref, object_position=self.p_obj)
+            u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
         # print error from x_pred with setpoint
         # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
         # self.get_logger().info(f'Linear Error: {lin_err:.3f}')

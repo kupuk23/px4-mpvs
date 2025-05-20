@@ -39,14 +39,19 @@ import time
 
 
 class SpacecraftVSMPC():
-    def __init__(self, model, p_obj=None):
+    def __init__(self, model, p_obj=None, s = None, Z = None, mode='pbvs'):
         # BEARING PENALTY Variables
-        self.ineq_bounds = 1e4
-        self.w_slack = 0
+        self.mode = mode
+        if self.mode == 'pbvs':
+            self.ineq_bounds = 1e4
+            self.w_slack = 0
         self.rot_limit = 5 #np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
+        self.s = s
+        self.Z = Z
+
         
 
         self.x0 = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
@@ -55,10 +60,10 @@ class SpacecraftVSMPC():
         else:
             self.p_obj0 = np.array([5.0, 0.0, 0.0])  # object position in inertial frame
 
-        self.ocp_solver, self.integrator = self.setup(self.x0, self.N, self.Tf, self.p_obj0)
+        self.ocp_solver, self.integrator = self.setup(self.x0, self.N, self.Tf, self.p_obj0, s, Z)
 
 
-    def setup(self, x0, N_horizon, Tf, p_obj0):
+    def setup(self, x0, N_horizon, Tf, p_obj0, s0=None, Z =None):
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
 
@@ -110,10 +115,6 @@ class SpacecraftVSMPC():
         ocp.model.cost_expr_ext_cost = x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error 
         ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error 
 
-        # Initialize parameters
-        p_0 = np.concatenate((x0, np.zeros(nu), p_obj0))  # First step is error 0 since x_ref = x0
-        ocp.parameter_values = p_0
-
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
         ocp.constraints.ubu = np.array([+Fmax, +Fmax, +Fmax, +Fmax])
@@ -135,26 +136,35 @@ class SpacecraftVSMPC():
 
         # ocp.solver_options.print_level = 1
         
-        # constraint bounds -inf <= g(x) <= 0
-        ocp.constraints.lh = np.array([-self.ineq_bounds])
-        ocp.constraints.uh = np.array([0.0])
-        ocp.constraints.lh_e = np.array([-self.ineq_bounds])
-        ocp.constraints.uh_e = np.array([0.0])
+        if self.mode == 'pbvs':
+            # Initialize parameters
+            p_0 = np.concatenate((x0, np.zeros(nu), p_obj0))  # First step is error 0 since x_ref = x0
+            ocp.parameter_values = p_0
 
-        # define soft constraint using slack variable
-        ocp.constraints.idxsh = np.array([0])
-        ocp.constraints.idxsh_e = np.array([0])
+            # constraint bounds -inf <= g(x) <= 0
+            ocp.constraints.lh = np.array([-self.ineq_bounds])
+            ocp.constraints.uh = np.array([0.0])
+            ocp.constraints.lh_e = np.array([-self.ineq_bounds])
+            ocp.constraints.uh_e = np.array([0.0])
 
-        ocp.cost.Zl = np.array([0.0])
-        ocp.cost.Zu = np.array([self.w_slack])
-        ocp.cost.Zl_e = np.array([0.0])
-        ocp.cost.Zu_e = np.array([self.w_slack])
+            # define soft constraint using slack variable
+            ocp.constraints.idxsh = np.array([0])
+            ocp.constraints.idxsh_e = np.array([0])
 
-        ocp.cost.zl = np.array([0.0])
-        ocp.cost.zu = np.array([self.w_slack])
-        ocp.cost.zl_e = np.array([0.0])
-        ocp.cost.zu_e = np.array([self.w_slack])
-        
+            ocp.cost.Zl = np.array([0.0])
+            ocp.cost.Zu = np.array([self.w_slack])
+            ocp.cost.Zl_e = np.array([0.0])
+            ocp.cost.Zu_e = np.array([self.w_slack])
+
+            ocp.cost.zl = np.array([0.0])
+            ocp.cost.zu = np.array([self.w_slack])
+            ocp.cost.zl_e = np.array([0.0])
+            ocp.cost.zu_e = np.array([self.w_slack])
+
+        elif self.mode == 'ibvs':
+            # Initialize parameters for image dynamics
+            # p_0 = np.concatenate((x0, np.zeros(nu), s0, Z)) # s0 = features state, Z = feature depth  
+            pass
 
         use_RTI=True
         if use_RTI:
@@ -178,35 +188,40 @@ class SpacecraftVSMPC():
     
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = 0 if servoing_enabled else 0 #4e2
+        self.w_slack = 5e2 if servoing_enabled else 0 #4e2
         
-    def solve(self, x0, verbose=False, ref=None, object_position=None):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, s = None, Z=None):
 
         # preparation phase
         ocp_solver = self.ocp_solver
 
-        object_position = object_position if object_position is not None else self.p_obj0
+        p_obj = p_obj if p_obj is not None else self.p_obj0
 
         # Set reference, create zero reference
         if ref is None:
             zero_ref = np.zeros(self.model.get_acados_model().x.size()[0] + self.model.get_acados_model().u.size()[0])
             zero_ref[6] = 1.0
 
+        if self.mode == 'pbvs':
+            for i in range(self.N+1):
+                if i != self.N and i != 0:
+                    self.ocp_solver.cost_set(i, "Zu", np.array([self.w_slack]))
+                    self.ocp_solver.cost_set(i, "zu", np.array([self.w_slack]))
+                    
+                if ref is not None:
+                    # Assumed ref structure: (nx+nu) x N+1
+                    # NOTE: last u_ref is not used
+                    p_i = np.concatenate([ref[:, i], p_obj])
+                    ocp_solver.set(i, "p", p_i)
+                else:
+                    # set all references to 0
+                    p_i = np.concatenate([zero_ref, p_obj])
+                    ocp_solver.set(i, "p", p_i)
 
-        for i in range(self.N+1):
-            if i != self.N and i != 0:
-                self.ocp_solver.cost_set(i, "Zu", np.array([self.w_slack]))
-                self.ocp_solver.cost_set(i, "zu", np.array([self.w_slack]))
-                
-            if ref is not None:
-                # Assumed ref structure: (nx+nu) x N+1
-                # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], object_position])
-                ocp_solver.set(i, "p", p_i)
-            else:
-                # set all references to 0
-                p_i = np.concatenate([zero_ref, object_position])
-                ocp_solver.set(i, "p", p_i)
+        elif self.mode == 'ibvs':
+            # set solver params and cost for IBVS
+            pass
+
         
         # self.ocp_solver.cost_set(self.N, "zu_e", np.array([self.w_slack]))
         # self.ocp_solver.cost_set(self.N, "Zu_e", np.array([self.w_slack]))
