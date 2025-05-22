@@ -89,69 +89,6 @@ class CircleFeatureDetector:
         if self.debug:
             print(f"Set target points: {self.target_points}")
 
-    def analyze_reference(self, reference_img_path):
-        """
-        Analyze reference image to automatically detect marker centroids.
-        These will be used as target points for matching with live images.
-
-        Args:
-            reference_img_path: Path to the reference image containing markers
-
-        Returns:
-            success: Boolean indicating if 4 markers were successfully detected
-        """
-        if not os.path.exists(reference_img_path):
-            if self.debug:
-                print(f"Reference image not found: {reference_img_path}")
-            return False
-
-        # Load reference image
-        self.reference_img = cv2.imread(reference_img_path)
-        if self.reference_img is None:
-            if self.debug:
-                print(f"Failed to load reference image: {reference_img_path}")
-            return False
-
-        if self.debug:
-            print(f"Analyzing reference image: {reference_img_path}")
-
-        # Detect circles in reference image using the same algorithm
-        ref_points = self.detect(self.reference_img)
-
-        if ref_points is None or len(ref_points) != 4:
-            if self.debug:
-                print(f"Failed to detect exactly 4 markers in reference image")
-            return False
-
-        # Set the detected points as target points
-        self.set_target_points(ref_points)
-
-        # Create reference visualization for debugging
-        self.ref_visualization = self.reference_img.copy()
-        for i, (x, y) in enumerate(ref_points):
-            cv2.circle(self.ref_visualization, (int(x), int(y)), 10, (0, 0, 255), -1)
-            cv2.putText(
-                self.ref_visualization,
-                f"Marker {i}",
-                (int(x) + 15, int(y)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 0),
-                2,
-            )
-
-        # Show reference visualization if enabled
-        if self.visualize:
-            cv2.imshow("Reference Markers", self.ref_visualization)
-            cv2.waitKey(1)
-
-
-        if self.debug:
-            print(f"Successfully detected 4 markers in reference image")
-            print(f"Reference markers at: {ref_points}")
-
-        return True
-
     def detect(self, img):
         """
         Detect 4 circle features and return their centroids ordered from
@@ -211,8 +148,8 @@ class CircleFeatureDetector:
             )
 
             # Show intermediate processing steps for debugging
-            cv2.imshow("Keypoints", img_with_keypoints)
-            cv2.imshow("Masked Image", mask)
+            # cv2.imshow("Keypoints", img_with_keypoints)
+            # cv2.imshow("Masked Image", mask)
 
             # cv2.imshow(self.window_name, viz_img)
 
@@ -222,22 +159,19 @@ class CircleFeatureDetector:
                 print(f"Not enough circles detected: {len(circle_centers)}")
             return None
 
-        # If more than 4 circles and we have target points, match with target
-        if len(circle_centers) >= 4 and self.target_points is not None:
-            matched_centers = self._match_circles(circle_centers, self.target_points)
-            if matched_centers is not None:
-                ordered_centers = matched_centers
-                if self.debug:
-                    print(f"Matched {len(ordered_centers)} circles with target pattern")
-            else:
-                # If matching failed, use default ordering with all detected circles
-                ordered_centers = self._order_circles(circle_centers[:4])
-                if self.debug:
-                    print("Matching failed, using default ordering")
-        else:
-            # Just order the 4 circles
-            ordered_centers = self._order_circles(circle_centers[:4])
 
+        # If more than 4 circles, match with target points
+        matched_centers = self._match_circles(circle_centers, self.target_points)
+        if matched_centers is not None:
+            ordered_centers = self._order_circles(matched_centers)
+        else:
+            # If matching failed, use default ordering with all detected circles
+            ordered_centers = self._order_circles(circle_centers[:4])
+            if self.debug:
+                print("Matching failed, using default ordering")
+
+
+        
         # Show final detected circles if visualization is enabled
         if self.visualize:
             viz_img = img.copy()
@@ -245,7 +179,7 @@ class CircleFeatureDetector:
             # Draw circles and IDs
             for i, center in enumerate(ordered_centers):
                 cv2.circle(
-                    viz_img, (int(center[0]), int(center[1])), 10, (0, 0, 255), -1
+                    viz_img, (int(center[0]), int(center[1])), 5, (0, 0, 255), -1
                 )
                 cv2.putText(
                     viz_img,
@@ -258,20 +192,8 @@ class CircleFeatureDetector:
                 )
 
             # If we have reference visualization, show it side by side with current detection
-            if self.ref_visualization is not None:
-                h1, w1 = viz_img.shape[:2]
-                h2, w2 = self.ref_visualization.shape[:2]
 
-                # Resize reference to match current image height
-                ref_resized = cv2.resize(
-                    self.ref_visualization, (int(w2 * h1 / h2), h1)
-                )
-
-                # Create side-by-side comparison
-                comparison = np.hstack([viz_img, ref_resized])
-                cv2.imshow("Current vs Reference", comparison)
-            else:
-                cv2.imshow(self.window_name, viz_img)
+            cv2.imshow(self.window_name, viz_img)
 
             cv2.waitKey(1)
 
@@ -422,13 +344,6 @@ class CircleFeatureDetector:
 
         return np.array(filtered_lines) if filtered_lines else None
 
-    # def show_reference_markers(self):
-    #     """Display the reference image with detected markers if available."""
-    #     if self.ref_visualization is not None:
-    #         cv2.imshow("Reference Markers", self.ref_visualization)
-    #         cv2.waitKey(1)
-    #         return True
-    #     return False
 
     def save_reference_visualization(self, output_path):
         """Save the reference visualization to disk."""

@@ -96,6 +96,21 @@ class SpacecraftIBMPVS(Node):
             "camera_frame_id", "camera_link"
         ).value
 
+        # flattened 2d coordinates of the desired points (4x2)
+        self.desired_points = np.array(
+            [
+                210,
+                153,
+                440,
+                155,
+                210,
+                407,
+                440,
+                404,
+            ],  # top-left, top-right, bottom-left, bottom-right
+            dtype=np.int16,
+        )
+
         # Get mode; rate, wrench, direct_allocation
         self.mode = self.declare_parameter("mode", "wrench").value
         self.sitl = True
@@ -132,31 +147,6 @@ class SpacecraftIBMPVS(Node):
 
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
 
-        # Create Spacecraft and controller objects
-        if self.mode == "rate":
-            from px4_mpc.models.spacecraft_rate_model import SpacecraftRateModel
-            from px4_mpc.controllers.spacecraft_rate_mpc import SpacecraftRateMPC
-
-            self.model = SpacecraftRateModel()
-            self.mpc = SpacecraftRateMPC(self.model)
-        elif self.mode == "wrench":
-            from px4_mpc.models.spacecraft_wrench_model import SpacecraftWrenchModel
-            from px4_mpc.controllers.spacecraft_wrench_mpc import SpacecraftWrenchMPC
-
-            self.model = SpacecraftWrenchModel()
-            self.mpc = SpacecraftWrenchMPC(self.model)
-        elif self.mode == "direct_allocation":
-
-            from px4_mpc.models.spacecraft_direct_allocation_model import (
-                SpacecraftDirectAllocationModel,
-            )
-            from px4_mpc.controllers.spacecraft_direct_allocation_mpc import (
-                SpacecraftDirectAllocationMPC,
-            )
-
-            self.model = SpacecraftVSModel(mode = 'pbvs')
-            self.mpc = SpacecraftVSMPC(self.model)
-
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
         self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
@@ -170,8 +160,21 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis
 
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
-        self.p_markers = np.array([0.0, 0.0, 0.0])  # object position in camera frame
+        self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
+        self.Z = np.array([0.0, 0.0, 0.0, 0.0])
         self.servoing = False
+        self.servo_mode = "ibvs"  # pbvs or ibvs
+        self.markers_detected = False
+        self.controller_loaded = False
+
+        if self.servo_mode == "pbvs":
+            self.model = SpacecraftVSModel(mode="pbvs")
+            self.mpc = SpacecraftVSMPC(
+                self.model,
+                mode="pbvs",
+            )
+        # self.model = SpacecraftVSModel(mode="ibvs", s_d=self.desired_points)
+        # self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", s=self.p_markers, Z=self.Z)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -276,12 +279,14 @@ class SpacecraftIBMPVS(Node):
 
     def marker_callback(self, msg):
         # Receive the detected markers, unflatten the array into x y z
-        
-        #convert to int16 for the x and y coordinates
-        self.p_markers[0:1, :] = self.p_markers[0:1, :].astype(np.int16)
-        
 
-    
+        # convert to int16 for the x and y coordinates
+        points_3d = np.array(msg.data).reshape(-1, 3)
+        self.p_markers = points_3d[:, 0:2].astype(np.int16).reshape(-1, 8)
+        self.Z = points_3d[:, 2].astype(np.float16)
+
+        self.markers_detected = True
+
     def vehicle_attitude_callback(self, msg):
         # TODO: handle NED->ENU transformation
         self.vehicle_attitude[0] = msg.q[0]
@@ -413,6 +418,13 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
 
+        if self.servo_mode == "ibvs" and self.markers_detected and not self.controller_loaded:
+            self.model = SpacecraftVSModel(mode="ibvs", s_d=self.desired_points)
+            self.mpc = SpacecraftVSMPC(
+                self.model, mode="ibvs", s=self.p_markers, Z=self.Z
+            )
+            self.controller_loaded = True
+
         # Publish odometry for SITL
         if self.sitl:
             self.publish_sitl_odometry()
@@ -523,11 +535,11 @@ class SpacecraftIBMPVS(Node):
 
         # Solve MPC
         # check if p_obj is zeros
-        if not self.servoing:
+        if not np.all(self.p_markers == 0.0) and self.servo_mode == "pbvs":
             u_pred, x_pred = self.mpc.solve(x0, ref=ref)
-        else:
-            # print ("obj position: ", self.p_obj)
-            u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
+        elif self.servo_mode == "ibvs" and self.controller_loaded:
+            u_pred, x_pred = self.mpc.solve(
+                x0, ref=ref, s=self.p_markers, Z=self.Z)
         # print error from x_pred with setpoint
         # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
         # self.get_logger().info(f'Linear Error: {lin_err:.3f}')

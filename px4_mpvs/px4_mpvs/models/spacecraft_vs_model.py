@@ -35,10 +35,24 @@ from acados_template import AcadosModel
 import casadi as cs
 import numpy as np
 
-class SpacecraftVSModel():
-    def __init__(self, mode = 'pbvs'):
+
+class SpacecraftVSModel:
+    def __init__(self, mode: str = "pbvs", s_d: np.ndarray = None):
         self.mode = mode
-        self.name = 'spacecraft_visual_servo_model'
+        self.name = "spacecraft_visual_servo_model"
+        if self.mode == "ibvs":
+            assert s_d is not None, "s_d must be provided for ibvs mode"
+            self.dt = 5.0 / 49  # Tf/N from controller
+            self.s_d = s_d.reshape(-1, 8)
+
+            # Camera intrinsic parameters
+            self.K = np.array(
+                [
+                    [500.0, 0.0, 320.0],  # fx, 0, cx
+                    [0.0, 500.0, 240.0],  # 0, fy, cy
+                    [0.0, 0.0, 1.0],  # 0, 0, 1
+                ]
+            )
 
         # constants
         self.mass = 16.8
@@ -47,24 +61,68 @@ class SpacecraftVSModel():
         self.max_rate = 0.5
         self.torque_arm_length = 0.12
 
-
         # BEARING-ERROR variables
         self.theta_max_deg = 10
 
+    def _get_interaction_matrix(self, s: cs.MX, Z: cs.MX) -> cs.MX:
+        L = cs.MX.zeros(s.shape[1], 6)
+
+        N = s.shape[1] / 2
+        for i in range(N):
+            x, y = s[0, i * 2], s[0, i * 2 + 1]
+            depth = Z[0, i]
+            # normalize the point
+            x_n = (x - self.K[0, 2]) / self.K[0, 0]
+            y_n = (y - self.K[1, 2]) / self.K[1, 1]
+
+            row = i * 2
+
+            L[row, 0] = -1.0 / depth
+            L[row, 1] = 0.0
+            L[row, 2] = x_n / depth
+            L[row, 3] = x_n * y_n
+            L[row, 4] = -(1.0 + x_n * x_n)
+            L[row, 5] = y_n
+
+            # For vy
+            L[row + 1, 0] = 0.0
+            L[row + 1, 1] = -1.0 / depth
+            L[row + 1, 2] = y_n / depth
+            L[row + 1, 3] = 1.0 + y_n * y_n
+            L[row + 1, 4] = -x_n * y_n
+            L[row + 1, 5] = -x_n
+
+        return L  # cs.MX((8,6))
+
     def get_acados_model(self) -> AcadosModel:
         def skew_symmetric(v):
-            return cs.vertcat(cs.horzcat(0, -v[0], -v[1], -v[2]),
+            return cs.vertcat(
+                cs.horzcat(0, -v[0], -v[1], -v[2]),
                 cs.horzcat(v[0], 0, v[2], -v[1]),
                 cs.horzcat(v[1], -v[2], 0, v[0]),
-                cs.horzcat(v[2], v[1], -v[0], 0))
+                cs.horzcat(v[2], v[1], -v[0], 0),
+            )
 
         def q_to_rot_mat(q):
             qw, qx, qy, qz = q[0], q[1], q[2], q[3]
 
             rot_mat = cs.vertcat(
-                cs.horzcat(1 - 2 * (qy ** 2 + qz ** 2), 2 * (qx * qy - qw * qz), 2 * (qx * qz + qw * qy)),
-                cs.horzcat(2 * (qx * qy + qw * qz), 1 - 2 * (qx ** 2 + qz ** 2), 2 * (qy * qz - qw * qx)),
-                cs.horzcat(2 * (qx * qz - qw * qy), 2 * (qy * qz + qw * qx), 1 - 2 * (qx ** 2 + qy ** 2)))
+                cs.horzcat(
+                    1 - 2 * (qy**2 + qz**2),
+                    2 * (qx * qy - qw * qz),
+                    2 * (qx * qz + qw * qy),
+                ),
+                cs.horzcat(
+                    2 * (qx * qy + qw * qz),
+                    1 - 2 * (qx**2 + qz**2),
+                    2 * (qy * qz - qw * qx),
+                ),
+                cs.horzcat(
+                    2 * (qx * qz - qw * qy),
+                    2 * (qy * qz + qw * qx),
+                    1 - 2 * (qx**2 + qy**2),
+                ),
+            )
 
             return rot_mat
 
@@ -72,17 +130,18 @@ class SpacecraftVSModel():
             rot_mat = q_to_rot_mat(q)
 
             return cs.mtimes(rot_mat, v)
-        
+
         def define_visual_constraint(p_obj, p, q):
 
-
             r_I = p_obj - p  # Vector from robot to object in inertial frame
-            
+
             # Transform to body frame using the rotation matrix
             r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q)), r_I)
 
             # Compute vector norm
-            r_B_norm = cs.sqrt(r_B[0]**2 + r_B[1]**2 + r_B[2]**2)  # More explicit form
+            r_B_norm = cs.sqrt(
+                r_B[0] ** 2 + r_B[1] ** 2 + r_B[2] ** 2
+            )  # More explicit form
             cos_theta_max = cs.cos(np.deg2rad(self.theta_max_deg))
             g_x = cos_theta_max * r_B_norm - r_B[0]
 
@@ -90,38 +149,62 @@ class SpacecraftVSModel():
 
         model = AcadosModel()
 
+        def _get_feature_dynamics(s, L, v, w):
+            # Image feature dynamics equation
 
-        
+            # transform twist from base to camera frame
+            # w_cam = Rbc*w_base
+            # v_cam = Rbc*(v_base + w_base x r_bc)
+            # no rotation in the camera frame, Rbc = I
+            r_bc = cs.DM([0.09, 0.0, 0.51])
+            v_c = v + cs.cross(w, r_bc)
+            w_c = w
+            h_x = s + (L @ cs.vertcat(v_c, w_c) * self.dt)  # 1x8
+            return h_x
+
         # set up states & controls
-        p      = cs.MX.sym('p', 3)
-        v      = cs.MX.sym('v', 3)
-        q      = cs.MX.sym('q', 4)
-        w      = cs.MX.sym('w', 3)
+        p = cs.MX.sym("p", 3)
+        v = cs.MX.sym("v", 3)
+        q = cs.MX.sym("q", 4)
+        w = cs.MX.sym("w", 3)
 
         x = cs.vertcat(p, v, q, w)
 
-        if self.mode == 'pbvs':
+        if self.mode == "pbvs":
             # compute bearing inequality
 
-
-            p_obj = cs.MX.sym('p_obj', 3)  # Object position in inertial frame
+            p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
 
             g_x = define_visual_constraint(p_obj, p, q)
 
             # Define nonlinear constraint
             model.con_h_expr = g_x
-            model.con_h_expr_e = g_x     
+            model.con_h_expr_e = g_x
 
-             # Add model parameters
+            # Add model parameters
             model_params = cs.vertcat(p_obj)
             model.p = model_params  # Use object position as parameter
 
         else:
-            # Define Image Dynamics here
+            s = cs.MX.sym("s", (1, 8))
+            Z = cs.MX.sym("Z", (1, 4))
+            # Define the image dynamics here
+            L = self._get_interaction_matrix(s, Z)
 
-            pass  
+            h_k = _get_feature_dynamics(s, L, v, w)
 
-        u = cs.MX.sym('u', 4)
+            # TODO: add penalty cost, make sure s and Z shaped correctly
+            s_d = cs.DM(self.s_d)
+
+            # define the penalty cost : h(k) - s_d
+            e_s = h_k - s_d
+            s_cost = cs.mtimes(e_s, e_s.T)
+            model.cost_expr_ext_cost = s_cost
+            model.cost_expr_ext_cost_e = s_cost
+            model_params = cs.vertcat(s, Z)
+            model.p = model_params
+
+        u = cs.MX.sym("u", 4)
         D_mat = cs.MX.zeros(2, 4)
         D_mat[0, 0] = 1
         D_mat[0, 1] = 1
@@ -143,21 +226,22 @@ class SpacecraftVSModel():
         tau = cs.vertcat(0.0, 0.0, tau_1d)
 
         # xdot
-        p_dot      = cs.MX.sym('p_dot', 3)
-        v_dot      = cs.MX.sym('v_dot', 3)
-        q_dot      = cs.MX.sym('q_dot', 4)
-        w_dot      = cs.MX.sym('w_dot', 3)
+        p_dot = cs.MX.sym("p_dot", 3)
+        v_dot = cs.MX.sym("v_dot", 3)
+        q_dot = cs.MX.sym("q_dot", 4)
+        w_dot = cs.MX.sym("w_dot", 3)
 
         xdot = cs.vertcat(p_dot, v_dot, q_dot, w_dot)
 
-        a_thrust = v_dot_q(F, q)/self.mass
+        a_thrust = v_dot_q(F, q) / self.mass
 
         # dynamics
-        f_expl = cs.vertcat(v,
-                            a_thrust,
-                            1 / 2 * cs.mtimes(skew_symmetric(w), q),
-                            np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w))
-                            )
+        f_expl = cs.vertcat(
+            v,
+            a_thrust,
+            1 / 2 * cs.mtimes(skew_symmetric(w), q),
+            np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
+        )
 
         f_impl = xdot - f_expl
 
@@ -168,9 +252,4 @@ class SpacecraftVSModel():
         model.u = u
         model.name = self.name
 
-       
-        
-
-        
-        
         return model
