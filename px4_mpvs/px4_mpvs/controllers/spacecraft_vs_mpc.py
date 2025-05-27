@@ -39,20 +39,11 @@ import time
 
 
 class SpacecraftVSMPC:
-    def __init__(self, model, p_obj=None, x0=None, s=None, Z=None, mode="pbvs"):
+    def __init__(self, model, p_obj=None, x0=None, Z=None, mode="pbvs"):
         # BEARING PENALTY Variables
         self.mode = mode
-        if self.mode == "pbvs":
-            self.ineq_bounds = 1e4
-            self.w_slack = 0
-            self.p_obj0 = p_obj if p_obj else np.array([10.0, 0.0, 0.0])
-        elif self.mode == "ibvs":
-            assert s is not None, "s must be provided for IBVS mode"
-            assert Z is not None, "Z must be provided for IBVS mode"
-            self.s0 = s
-            self.Z0 = Z
 
-        self.rot_limit = 5  # np.inf .1
+        self.vel_limit = 5  # np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
@@ -64,10 +55,23 @@ class SpacecraftVSMPC:
                 [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             )
         )
-        
-        self.ocp_solver, self.integrator = self.setup(
-            self.x0, self.N, self.Tf, self.p_obj0, self.s0, self.Z0
-        )
+        if self.mode == "pbvs":
+            self.ineq_bounds = 1e4
+            self.w_slack = 0
+            self.p_obj0 = p_obj if p_obj is not None else np.array([10.0, 0.0, 0.0])
+            self.ocp_solver, self.integrator = self.setup(
+                self.x0, self.N, self.Tf, self.p_obj0
+            )
+        elif self.mode == "ibvs":
+            assert Z is not None, "Z must be provided for IBVS mode"
+            # pixel bounds for image features
+            self.s_min = 10
+            self.s_max = 640 - 10 # 640x480 image
+
+            self.Z0 = Z if Z is not None else np.array([1.0] * 4)
+            self.ocp_solver, self.integrator = self.setup(
+                self.x0, self.N, self.Tf, Z0=self.Z0
+            )
 
     def set_bearing_constraints(self, ocp):
         # constraint bounds -inf <= g(x) <= 0
@@ -91,7 +95,7 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
         return ocp
 
-    def setup(self, x0, N_horizon, Tf, p_obj0=None, s0=None, Z=None):
+    def setup(self, x0, N_horizon, Tf, p_obj0=None, Z0=None):
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
 
@@ -111,22 +115,24 @@ class SpacecraftVSMPC:
 
         # set cost
         Q_mat = np.diag(
-            [5e1, 5e1, 5e1, 1e1, 1e1, 1e1, 8e3, 1e1, 1e1, 1e1]  # 8e3 default
+            [
+                *[5e1] * 3,  # Position weights (x, y, z)
+                *[1e1] * 3,  # Velocity weights (vx, vy, vz)
+                8e3,  # Quaternion scalar part, 8e3 default
+                *[1e1] * 3,  # angular vel part, (ωx, ωy, ωz)
+            ]
         )
         Q_e = 20 * Q_mat
         R_mat = np.diag([1e1] * 4)
 
-        # image feature cost
-        S = 1e2
-        S_e = 20 * S
-
         # References:
-        x_ref = cs.MX.sym("x_ref", (13, 1))
-        u_ref = cs.MX.sym("u_ref", (4, 1))
+        x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 states + 8 features
+        u_ref = cs.MX.sym("u_ref", (nu, 1))
 
         # Calculate errors
         # x : p,v,q,w               , R9 x SO(3)
         # u : Fx,Fy,Fz,Mx,My,Mz     , R6
+
         x = ocp.model.x
         u = ocp.model.u
 
@@ -134,6 +140,7 @@ class SpacecraftVSMPC:
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
         x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
+
         u_error = u - u_ref
 
         # define cost with parametric reference
@@ -152,39 +159,38 @@ class SpacecraftVSMPC:
             )  # First step is error 0 since x_ref = x0
 
             ocp = self.set_bearing_constraints(ocp)
-            ocp.model.cost_expr_ext_cost = (
-                x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error
-            )
-
-            ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error
 
         elif self.mode == "ibvs":
-            assert s0 is not None, "s0 must be provided for IBVS mode"
-            assert Z is not None, "Z must be provided for IBVS mode"
+            assert Z0 is not None, "Z must be provided for IBVS mode"
 
-            s = ocp.model.p[3:11]
-            Z = ocp.model.p[11:15]
-            ocp.model.p = cs.vertcat(x_ref, u_ref, s, Z)
+            x0 = np.concatenate((x0, np.zeros(8)))
+            # add x_error for image features
+            x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
-            # add cost term for image features
-            cost_s = model.cost_expr_ext_cost
-            cost_s_e = model.cost_expr_ext_cost_e
-
-            ocp.model.cost_expr_ext_cost = cost_s * S
-            ocp.model.cost_expr_ext_cost_e = cost_s_e * S_e
-
-            # set Q matrix for p and q
-            Q_mat = np.diag([0, 0, 0, 1e1, 1e1, 1e1, 0, 1e1, 1e1, 1e1])  # 8e3 default
+            Z = ocp.model.p
+            ocp.model.p = cs.vertcat(x_ref, u_ref, Z)
 
             p_0 = np.concatenate(
-                (x0, np.zeros(nu), s0, Z)
+                (x0, np.zeros(nu), Z0)
             )  # s0 = features state, Z = feature depth
 
-            ocp.model.cost_expr_ext_cost += (
-                x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error
+            # set p and q weight to 0
+            Q_mat = np.diag(
+                [
+                    *[0] * 3,  # Position weights (x, y, z)
+                    *[5e4] * 3,  # Velocity weights (vx, vy, vz) # 5e1
+                    0,  # Quaternion scalar part, 8e3 default
+                    *[5e4] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
+                    *[5e-2] * 8,  # Image feature weights
+                ]
             )
+            Q_e = 20 * Q_mat
 
-            ocp.model.cost_expr_ext_cost_e += x_error.T @ Q_e @ x_error
+        ocp.model.cost_expr_ext_cost = (
+            x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error
+        )
+
+        ocp.model.cost_expr_ext_cost_e = x_error.T @ Q_e @ x_error
 
         ocp.parameter_values = p_0
 
@@ -194,11 +200,24 @@ class SpacecraftVSMPC:
         ocp.constraints.idxbu = np.array([0, 1, 2, 3])
         ocp.constraints.x0 = x0
 
-        # set bounds for angular velocity
+        # set bounds for velocity
 
-        # ocp.constraints.idxbx = np.array([10, 11, 12])      # ωx, ωy, ωz
-        # ocp.constraints.lbx   = np.array([-self.rot_limit, -self.rot_limit, -self.rot_limit])
-        # ocp.constraints.ubx   = np.array([+self.rot_limit, +self.rot_limit, +self.rot_limit])
+        ocp.constraints.idxbx = np.array(
+            [3, 4, 5, 10, 11, 12]
+        )  # vx, vy, vz, ωx, ωy, ωz
+        ocp.constraints.lbx = np.array(
+            [-self.vel_limit] * 6
+        )
+        ocp.constraints.ubx = np.array(
+            [self.vel_limit] * 6
+        )
+
+        # set bounds for image features (x coordinates)
+        ocp.constraints.idxbx = np.array(
+            [13, 15, 17, 19]
+        )
+        ocp.constraints.lbx = np.array([self.s_min] * 4)
+        ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set options
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
@@ -233,12 +252,15 @@ class SpacecraftVSMPC:
         # Update the constraints based on the servoing_enabled flag
         self.w_slack = 5e2 if servoing_enabled else 0  # 4e2
 
-    def solve(self, x0, verbose=False, ref=None, p_obj=None, s=None, Z=None):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None):
+        if self.mode == "ibvs":
+            assert Z is not None, "Z must be provided for IBVS mode"
+
+        elif self.mode == "pbvs":
+            p_obj = p_obj if p_obj is not None else self.p_obj0
 
         # preparation phase
         ocp_solver = self.ocp_solver
-
-        p_obj = p_obj if p_obj is not None else self.p_obj0
 
         # Set reference, create zero reference
         if ref is None:
@@ -248,25 +270,27 @@ class SpacecraftVSMPC:
             )
             zero_ref[6] = 1.0
 
-        if self.mode == "pbvs":
-            for i in range(self.N + 1):
-                if i != self.N and i != 0:
+        for i in range(self.N + 1):
+            if i != self.N and i != 0:
+                if self.mode == "pbvs":
                     self.ocp_solver.cost_set(i, "Zu", np.array([self.w_slack]))
                     self.ocp_solver.cost_set(i, "zu", np.array([self.w_slack]))
 
-                if ref is not None:
-                    # Assumed ref structure: (nx+nu) x N+1
-                    # NOTE: last u_ref is not used
+            if ref is not None:
+                # Assumed ref structure: (nx+nu) x N+1
+                # NOTE: last u_ref is not used
+                if self.mode == "pbvs":
                     p_i = np.concatenate([ref[:, i], p_obj])
-                    ocp_solver.set(i, "p", p_i)
                 else:
-                    # set all references to 0
+                    p_i = np.concatenate([ref[:, i], Z])
+                ocp_solver.set(i, "p", p_i)
+            else:
+                # set all references to 0
+                if self.mode == "pbvs":
                     p_i = np.concatenate([zero_ref, p_obj])
-                    ocp_solver.set(i, "p", p_i)
-
-        elif self.mode == "ibvs":
-            # set solver params and cost for IBVS
-            pass
+                else:
+                    p_i = np.concatenate([zero_ref, Z])
+                ocp_solver.set(i, "p", p_i)
 
         # self.ocp_solver.cost_set(self.N, "zu_e", np.array([self.w_slack]))
         # self.ocp_solver.cost_set(self.N, "Zu_e", np.array([self.w_slack]))

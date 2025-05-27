@@ -471,6 +471,8 @@ class SpacecraftMPVS(Node):
         else:
             # print ("obj position: ", self.p_obj)
             u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
+
+            
         # print error from x_pred with setpoint
         # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
         # self.get_logger().info(f'Linear Error: {lin_err:.3f}')

@@ -99,20 +99,20 @@ class SpacecraftIBMPVS(Node):
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
             [
-                210,
-                153,
-                440,
-                155,
-                210,
-                407,
-                440,
-                404,
+                220,
+                108,
+                439,
+                107,
+                220,
+                366,
+                439,
+                367,
             ],  # top-left, top-right, bottom-left, bottom-right
             dtype=np.int16,
         )
 
         # Get mode; rate, wrench, direct_allocation
-        self.mode = self.declare_parameter("mode", "wrench").value
+        self.mode = self.declare_parameter("mode", "direct_allocation").value
         self.sitl = True
 
         # Get namespace
@@ -161,7 +161,7 @@ class SpacecraftIBMPVS(Node):
 
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
-        self.Z = np.array([0.0, 0.0, 0.0, 0.0])
+        self.Z = None
         self.servoing = False
         self.servo_mode = "ibvs"  # pbvs or ibvs
         self.markers_detected = False
@@ -173,8 +173,7 @@ class SpacecraftIBMPVS(Node):
                 self.model,
                 mode="pbvs",
             )
-        # self.model = SpacecraftVSModel(mode="ibvs", s_d=self.desired_points)
-        # self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", s=self.p_markers, Z=self.Z)
+            self.controller_loaded = True
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -282,7 +281,7 @@ class SpacecraftIBMPVS(Node):
 
         # convert to int16 for the x and y coordinates
         points_3d = np.array(msg.data).reshape(-1, 3)
-        self.p_markers = points_3d[:, 0:2].astype(np.int16).reshape(-1, 8)
+        self.p_markers = points_3d[:, 0:2].astype(np.int16).flatten()
         self.Z = points_3d[:, 2].astype(np.float16)
 
         self.markers_detected = True
@@ -338,33 +337,7 @@ class SpacecraftIBMPVS(Node):
         msg.pose.orientation.z = 0.0
 
         pub.publish(msg)
-
-    def publish_rate_setpoint(self, u_pred):
-        thrust_rates = u_pred[0, :]
-        thrust_command = thrust_rates[0:3]
-        rates_setpoint_msg = VehicleRatesSetpoint()
-        rates_setpoint_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-        rates_setpoint_msg.roll = float(thrust_rates[3])
-        rates_setpoint_msg.pitch = -float(thrust_rates[4])
-        rates_setpoint_msg.yaw = -float(thrust_rates[5])
-        rates_setpoint_msg.thrust_body[0] = float(thrust_command[0])
-        rates_setpoint_msg.thrust_body[1] = -float(thrust_command[1])
-        rates_setpoint_msg.thrust_body[2] = -float(thrust_command[2])
-        self.publisher_rates_setpoint.publish(rates_setpoint_msg)
-
-    def publish_wrench_setpoint(self, u_pred):
-        thrust_outputs_msg = VehicleThrustSetpoint()
-        thrust_outputs_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-
-        torque_outputs_msg = VehicleTorqueSetpoint()
-        torque_outputs_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-
-        thrust_outputs_msg.xyz = [u_pred[0, 0], -u_pred[0, 1], -0.0]
-        torque_outputs_msg.xyz = [0.0, -0.0, -u_pred[0, 2]]
-
-        self.publisher_thrust_setpoint.publish(thrust_outputs_msg)
-        self.publisher_torque_setpoint.publish(torque_outputs_msg)
-
+        
     def publish_direct_actuator_setpoint(self, u_pred):
         actuator_outputs_msg = ActuatorMotors()
         actuator_outputs_msg.timestamp = int(Clock().now().nanoseconds / 1000)
@@ -418,61 +391,36 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
 
-        if self.servo_mode == "ibvs" and self.markers_detected and not self.controller_loaded:
-            self.model = SpacecraftVSModel(mode="ibvs", s_d=self.desired_points)
-            self.mpc = SpacecraftVSMPC(
-                self.model, mode="ibvs", s=self.p_markers, Z=self.Z
-            )
+        if (
+            self.servo_mode == "ibvs"
+            and self.markers_detected
+            and not self.controller_loaded
+        ):
+            self.model = SpacecraftVSModel(mode="ibvs")
+            self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", Z=self.Z)
             self.controller_loaded = True
 
-        # Publish odometry for SITL
-        if self.sitl:
-            self.publish_sitl_odometry()
+        if self.controller_loaded:
 
-        # Publish offboard control modes
-        offboard_msg = OffboardControlMode()
-        offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-        offboard_msg.position = False
-        offboard_msg.velocity = False
-        offboard_msg.acceleration = False
-        offboard_msg.attitude = False
-        offboard_msg.body_rate = False
-        offboard_msg.direct_actuator = False
-        if self.mode == "rate":
-            offboard_msg.body_rate = True
-        elif self.mode == "direct_allocation":
+            # Publish odometry for SITL
+            if self.sitl:
+                self.publish_sitl_odometry()
+
+            # Publish offboard control modes
+            offboard_msg = OffboardControlMode()
+            offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
+            offboard_msg.position = False
+            offboard_msg.velocity = False
+            offboard_msg.acceleration = False
+            offboard_msg.attitude = False
+            offboard_msg.body_rate = False
             offboard_msg.direct_actuator = True
-        elif self.mode == "wrench":
-            offboard_msg.thrust_and_torque = True
-        self.publisher_offboard_mode.publish(offboard_msg)
+            self.publisher_offboard_mode.publish(offboard_msg)
 
-        # Set state and references for each MPC
-        if self.mode == "rate":
-            x0 = np.array(
-                [
-                    self.vehicle_local_position[0],
-                    self.vehicle_local_position[1],
-                    self.vehicle_local_position[2],
-                    self.vehicle_local_velocity[0],
-                    self.vehicle_local_velocity[1],
-                    self.vehicle_local_velocity[2],
-                    self.vehicle_attitude[0],
-                    self.vehicle_attitude[1],
-                    self.vehicle_attitude[2],
-                    self.vehicle_attitude[3],
-                ]
-            ).reshape(10, 1)
-            ref = np.concatenate(
-                (
-                    self.setpoint_position,  # position
-                    np.zeros(3),  # velocity
-                    self.setpoint_attitude,  # attitude
-                    np.zeros(6),
-                ),
-                axis=0,
-            )  # inputs reference (F, w)
-            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-        elif self.mode == "wrench":
+            # Set state and references for each MPC
+            if not self.controller_loaded:
+                return
+
             x0 = np.array(
                 [
                     self.vehicle_local_position[0],
@@ -490,86 +438,72 @@ class SpacecraftIBMPVS(Node):
                     self.vehicle_angular_velocity[2],
                 ]
             ).reshape(13, 1)
+
             ref = np.concatenate(
                 (
                     self.setpoint_position,  # position
                     np.zeros(3),  # velocity
                     self.setpoint_attitude,  # attitude
                     np.zeros(3),  # angular velocity
-                    np.zeros(3),
+                    np.zeros(4),  # inputs reference (u1, ..., u4) for 2D platform
                 ),
                 axis=0,
-            )  # inputs reference (F, torque)
-            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-        elif self.mode == "direct_allocation":
-            x0 = np.array(
-                [
-                    self.vehicle_local_position[0],
-                    self.vehicle_local_position[1],
-                    self.vehicle_local_position[2],
-                    self.vehicle_local_velocity[0],
-                    self.vehicle_local_velocity[1],
-                    self.vehicle_local_velocity[2],
-                    self.vehicle_attitude[0],
-                    self.vehicle_attitude[1],
-                    self.vehicle_attitude[2],
-                    self.vehicle_attitude[3],
-                    self.vehicle_angular_velocity[0],
-                    self.vehicle_angular_velocity[1],
-                    self.vehicle_angular_velocity[2],
-                ]
-            ).reshape(13, 1)
-            ref = np.concatenate(
-                (
-                    self.setpoint_position,  # position
-                    np.zeros(3),  # velocity
-                    self.setpoint_attitude,  # attitude
-                    np.zeros(3),  # angular velocity
-                    np.zeros(4),
-                ),
-                axis=0,
-            )  # inputs reference (u1, ..., u4) for 2D platform
-            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-        else:
-            raise ValueError(f"Invalid mode: {self.mode}")
-
-        # Solve MPC
-        # check if p_obj is zeros
-        if not np.all(self.p_markers == 0.0) and self.servo_mode == "pbvs":
-            u_pred, x_pred = self.mpc.solve(x0, ref=ref)
-        elif self.servo_mode == "ibvs" and self.controller_loaded:
-            u_pred, x_pred = self.mpc.solve(
-                x0, ref=ref, s=self.p_markers, Z=self.Z)
-        # print error from x_pred with setpoint
-        # lin_err = np.linalg.norm(self.vehicle_local_position - self.setpoint_position)
-        # self.get_logger().info(f'Linear Error: {lin_err:.3f}')
-        # ang_err = np.linalg.norm(self.vehicle_attitude - self.setpoint_attitude)
-        # self.get_logger().info(f'Angular Error: {ang_err:.3f}')
-
-        # Colect data
-        idx = 0
-        predicted_path_msg = Path()
-        for predicted_state in x_pred:
-            idx = idx + 1
-            # Publish time history of the vehicle path
-            predicted_pose_msg = vector2PoseMsg(
-                "map", predicted_state[0:3], self.setpoint_attitude
             )
-            predicted_path_msg.header = predicted_pose_msg.header
-            predicted_path_msg.poses.append(predicted_pose_msg)
-        self.predicted_path_pub.publish(predicted_path_msg)
-        self.publish_reference(self.reference_pub, self.setpoint_position)
 
-        if self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-            if self.mode == "rate":
-                self.publish_rate_setpoint(u_pred)
-            elif (
-                self.mode == "direct_allocation"
-                or self.mode == "direct_allocation_trajectory"
-            ):
+            if self.servo_mode == "ibvs" and self.controller_loaded:
+                p_markers = self.p_markers.reshape(8, -1)
+                x0 = np.vstack((x0, p_markers))
+
+                s_d = self.desired_points.flatten()
+                ref = np.concatenate(
+                    (
+                        self.setpoint_position,  # position
+                        np.zeros(3),  # velocity
+                        self.setpoint_attitude,  # attitude
+                        np.zeros(3),  # angular velocity
+                        s_d,
+                        np.zeros(4),  # inputs reference (u1, ..., u4) for 2D platform
+                    ),
+                    axis=0,
+                )
+
+            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
+
+            # Solve MPC
+            # check if p_obj is zeros
+            if self.servo_mode == "pbvs":
+                if not self.servoing:
+                    u_pred, x_pred = self.mpc.solve(x0, ref=ref)
+                else:
+                    u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
+            elif self.servo_mode == "ibvs" and self.controller_loaded:
+                u_pred, x_pred = self.mpc.solve(x0, ref=ref, Z=self.Z)
+                # debug reference and current image state
+                feature_current = x0[13:21].flatten()  # Current features
+                feature_desired = ref[13:21, 0].flatten()  # Desired features
+                error = feature_current - feature_desired
+                print(f"Feature current: {feature_current}")
+                print(f"Feature desired: {feature_desired}")
+                print(f"Feature errors: {error}")
+
+
+
+            # Colect data
+            idx = 0
+            predicted_path_msg = Path()
+            for predicted_state in x_pred:
+                idx = idx + 1
+                # Publish time history of the vehicle path
+                predicted_pose_msg = vector2PoseMsg(
+                    "map", predicted_state[0:3], self.setpoint_attitude
+                )
+                predicted_path_msg.header = predicted_pose_msg.header
+                predicted_path_msg.poses.append(predicted_pose_msg)
+            self.predicted_path_pub.publish(predicted_path_msg)
+            self.publish_reference(self.reference_pub, self.setpoint_position)
+
+            if self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
                 self.publish_direct_actuator_setpoint(u_pred)
-            elif self.mode == "wrench":
-                self.publish_wrench_setpoint(u_pred)
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)

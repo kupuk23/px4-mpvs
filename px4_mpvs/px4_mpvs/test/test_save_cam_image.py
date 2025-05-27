@@ -7,7 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "aligned_image"
+filename = "docked_image"
 
 
 class SaveImage(Node):

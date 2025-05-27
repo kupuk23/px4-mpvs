@@ -14,6 +14,8 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 
 from px4_mpvs.marker_detector_blob import CircleFeatureDetector
 
+import matplotlib
+matplotlib.use("TkAgg")  # Use TkAgg backend for matplotlib
 
 class MarkerDetectorNode(Node):
     def __init__(self):
@@ -23,7 +25,7 @@ class MarkerDetectorNode(Node):
         # Get parameters
 
         self.debug = self.declare_parameter("debug", True).value
-        self.visualize = self.declare_parameter("visualize", True).value
+        self.visualize = self.declare_parameter("visualize", False).value
 
         # Debug window
         # if self.visualize:
@@ -113,7 +115,8 @@ class MarkerDetectorNode(Node):
         try:
             image = self.bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
             # Detect circles
-            markers = self.detector.detect(image)
+            markers, viz_img = self.detector.detect(image)
+
             if markers is not None and len(markers) == 4:
                 # self.get_logger().info(f"Detected {len(markers)} markers")
                 Z = np.array(
@@ -123,7 +126,22 @@ class MarkerDetectorNode(Node):
                     ]
                 )
 
-                #append the Z values to the markers
+                for i, center in enumerate(markers):
+                    offset = 65 if i % 2 == 0 else 0
+                    cv2.putText(
+                        viz_img,
+                        "(" + str(center[0]) + "," + str(center[1]) + "," + "{:.2f}".format(Z[i]) +")",
+                        (int(center[0]) - offset, int(center[1]) + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5,
+                        (0, 255, 255),
+                        2,
+                    )
+
+                    cv2.imshow("Detected Markers", viz_img)
+                    cv2.waitKey(1)
+
+                # append the Z values to the markers
                 markers = np.hstack((markers, Z.reshape(-1, 1)))
 
                 # send the markers and depth to the IBVS controller

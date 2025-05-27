@@ -79,20 +79,20 @@ def generate_launch_description():
         namespace_arg,
         setpoint_from_rviz_arg,
         use_sim_time_arg,
-        Node(
-            package='px4_mpvs',
-            namespace=namespace,
-            executable='ib_mpvs_spacecraft', #mpvs_spacecraft
-            name='ib_mpvs_spacecraft', #mpvs_spacecraft
-            output='screen',
-            emulate_tty=True,
-            parameters=[
-                {'mode': mode},
-                {'namespace': namespace},
-                {'setpoint_from_rviz': setpoint_from_rviz},
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ]
-        ),
+        # Node(
+        #     package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='ib_mpvs_spacecraft', #mpvs_spacecraft
+        #     name='ib_mpvs_spacecraft', #mpvs_spacecraft
+        #     output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'mode': mode},
+        #         {'namespace': namespace},
+        #         {'setpoint_from_rviz': setpoint_from_rviz},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ]
+        # ),
         Node(package='px4_mpvs',
             namespace=namespace,
             executable='ibvs_main',

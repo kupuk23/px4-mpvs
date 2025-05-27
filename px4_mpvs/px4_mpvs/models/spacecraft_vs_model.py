@@ -37,14 +37,13 @@ import numpy as np
 
 
 class SpacecraftVSModel:
-    def __init__(self, mode: str = "pbvs", s_d: np.ndarray = None):
+    def __init__(self, mode: str = "pbvs"):
         self.mode = mode
         self.name = "spacecraft_visual_servo_model"
-        if self.mode == "ibvs":
-            assert s_d is not None, "s_d must be provided for ibvs mode"
-            self.dt = 5.0 / 49  # Tf/N from controller
-            self.s_d = s_d.reshape(-1, 8)
 
+
+        if self.mode == "ibvs":
+            
             # Camera intrinsic parameters
             self.K = np.array(
                 [
@@ -65,12 +64,12 @@ class SpacecraftVSModel:
         self.theta_max_deg = 10
 
     def _get_interaction_matrix(self, s: cs.MX, Z: cs.MX) -> cs.MX:
-        L = cs.MX.zeros(s.shape[1], 6)
+        L = cs.MX.zeros(s.shape[0], 6)
 
-        N = s.shape[1] / 2
+        N = int(s.shape[0] / 2)
         for i in range(N):
-            x, y = s[0, i * 2], s[0, i * 2 + 1]
-            depth = Z[0, i]
+            x, y = s[i * 2], s[i * 2 + 1]
+            depth = Z[i]
             # normalize the point
             x_n = (x - self.K[0, 2]) / self.K[0, 0]
             y_n = (y - self.K[1, 2]) / self.K[1, 1]
@@ -149,19 +148,21 @@ class SpacecraftVSModel:
 
         model = AcadosModel()
 
-        def _get_feature_dynamics(s, L, v, w):
+        def _get_feature_dynamics(L, v, w):
             # Image feature dynamics equation
 
             # transform twist from base to camera frame
             # w_cam = Rbc*w_base
             # v_cam = Rbc*(v_base + w_base x r_bc)
             # no rotation in the camera frame, Rbc = I
-            r_bc = cs.DM([0.09, 0.0, 0.51])
+            r_bc = cs.DM([0.09, 0.0, 0.51])  # camera translation from base frame
             v_c = v + cs.cross(w, r_bc)
             w_c = w
-            h_x = s + (L @ cs.vertcat(v_c, w_c) * self.dt)  # 1x8
-            return h_x
-
+            twist = cs.vertcat(v_c, w_c)  # 6x1
+            s_dot_vec = cs.mtimes(L, twist)  # 8x1
+            # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
+            return s_dot_vec
+        
         # set up states & controls
         p = cs.MX.sym("p", 3)
         v = cs.MX.sym("v", 3)
@@ -182,27 +183,25 @@ class SpacecraftVSModel:
             model.con_h_expr_e = g_x
 
             # Add model parameters
-            model_params = cs.vertcat(p_obj)
+            model_params = p_obj
             model.p = model_params  # Use object position as parameter
 
         else:
-            s = cs.MX.sym("s", (1, 8))
-            Z = cs.MX.sym("Z", (1, 4))
+            s = cs.MX.sym("s", 8)
+            Z = cs.MX.sym("Z", 4)
             # Define the image dynamics here
             L = self._get_interaction_matrix(s, Z)
 
-            h_k = _get_feature_dynamics(s, L, v, w)
-
-            # TODO: add penalty cost, make sure s and Z shaped correctly
-            s_d = cs.DM(self.s_d)
-
             # define the penalty cost : h(k) - s_d
-            e_s = h_k - s_d
-            s_cost = cs.mtimes(e_s, e_s.T)
-            model.cost_expr_ext_cost = s_cost
-            model.cost_expr_ext_cost_e = s_cost
-            model_params = cs.vertcat(s, Z)
+
+            # e_s = h_k - s_d
+            # s_cost = cs.mtimes(e_s, e_s.T)
+            # model.cost_expr_ext_cost = s_cost
+            # model.cost_expr_ext_cost_e = s_cost
+            model_params = Z
             model.p = model_params
+            x = cs.vertcat(x, s)
+        
 
         u = cs.MX.sym("u", 4)
         D_mat = cs.MX.zeros(2, 4)
@@ -230,6 +229,7 @@ class SpacecraftVSModel:
         v_dot = cs.MX.sym("v_dot", 3)
         q_dot = cs.MX.sym("q_dot", 4)
         w_dot = cs.MX.sym("w_dot", 3)
+        s_dot = cs.MX.sym("s_dot", 8)
 
         xdot = cs.vertcat(p_dot, v_dot, q_dot, w_dot)
 
@@ -242,6 +242,10 @@ class SpacecraftVSModel:
             1 / 2 * cs.mtimes(skew_symmetric(w), q),
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
         )
+
+        if self.mode == "ibvs":
+            f_expl = cs.vertcat(f_expl, _get_feature_dynamics(L, v, w))
+            xdot = cs.vertcat(xdot, s_dot)
 
         f_impl = xdot - f_expl
 

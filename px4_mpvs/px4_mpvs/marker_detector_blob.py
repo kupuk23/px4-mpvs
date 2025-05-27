@@ -5,7 +5,9 @@ import numpy as np
 from itertools import combinations, permutations
 import os
 import matplotlib
-matplotlib.use("TkAgg")  # Use a non-interactive backend
+
+# matplotlib.use("TkAgg")  # Use a non-interactive backend
+
 
 class CircleFeatureDetector:
     """
@@ -121,7 +123,6 @@ class CircleFeatureDetector:
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-
         kp = self.detector.detect(mask)
         img_with_keypoints = cv2.drawKeypoints(
             img,
@@ -134,31 +135,30 @@ class CircleFeatureDetector:
         circle_centers = cv2.KeyPoint_convert(kp)
 
         # If visualization is enabled, draw the circles that were found
-        if self.visualize:
-            # Visualize the blobbed image with circles
-            
-            cv2.putText(
-                img_with_keypoints,
-                f"Found {len(circle_centers)} circles",
-                (20, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 255, 255),
-                2,
-            )
+        # if self.visualize:
+        #     # Visualize the blobbed image with circles
 
-            # Show intermediate processing steps for debugging
-            # cv2.imshow("Keypoints", img_with_keypoints)
-            # cv2.imshow("Masked Image", mask)
+        #     cv2.putText(
+        #         img_with_keypoints,
+        #         f"Found {len(circle_centers)} circles",
+        #         (20, 30),
+        #         cv2.FONT_HERSHEY_SIMPLEX,
+        #         0.7,
+        #         (0, 255, 255),
+        #         2,
+        #     )
 
-            # cv2.imshow(self.window_name, viz_img)
+        # Show intermediate processing steps for debugging
+        # cv2.imshow("Keypoints", img_with_keypoints)
+        # cv2.imshow("Masked Image", mask)
+
+        # cv2.imshow(self.window_name, viz_img)
 
         # We need exactly 4 circles
         if len(circle_centers) < 4:
             if self.debug:
                 print(f"Not enough circles detected: {len(circle_centers)}")
             return None
-
 
         # If more than 4 circles, match with target points
         matched_centers = self._match_circles(circle_centers, self.target_points)
@@ -170,26 +170,36 @@ class CircleFeatureDetector:
             if self.debug:
                 print("Matching failed, using default ordering")
 
+        ordered_centers = np.array(ordered_centers, dtype=np.int16)
 
-        
+        viz_img = img.copy()
+
+        # Draw circles and IDs
+        for i, center in enumerate(ordered_centers):
+            cv2.circle(viz_img, (int(center[0]), int(center[1])), 5, (0, 0, 255), -1)
+            center = np.array(center, dtype=np.int16)
+            cv2.putText(
+                viz_img,
+                str(i),
+                (int(center[0]) + 15, int(center[1])),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
+            # offset = 30 if i % 2 == 0 else 0
+            # cv2.putText(
+            #     viz_img,
+            #     "(" + str(center[0]) + "," + str(center[1]) + ")",
+            #     (int(center[0]) - offset, int(center[1]) + 20),
+            #     cv2.FONT_HERSHEY_SIMPLEX,
+            #     0.5,
+            #     (0, 255, 255),
+            #     2,
+            # )
+
         # Show final detected circles if visualization is enabled
         if self.visualize:
-            viz_img = img.copy()
-
-            # Draw circles and IDs
-            for i, center in enumerate(ordered_centers):
-                cv2.circle(
-                    viz_img, (int(center[0]), int(center[1])), 5, (0, 0, 255), -1
-                )
-                cv2.putText(
-                    viz_img,
-                    str(i),
-                    (int(center[0]) + 15, int(center[1])),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7,
-                    (0, 0, 255),
-                    2,
-                )
 
             # If we have reference visualization, show it side by side with current detection
 
@@ -197,7 +207,7 @@ class CircleFeatureDetector:
 
             cv2.waitKey(1)
 
-        return ordered_centers
+        return ordered_centers, viz_img
 
     def _order_circles(self, circle_centers):
         """
@@ -343,7 +353,6 @@ class CircleFeatureDetector:
             cv2.imshow("Line Detection", viz_img)
 
         return np.array(filtered_lines) if filtered_lines else None
-
 
     def save_reference_visualization(self, output_path):
         """Save the reference visualization to disk."""
