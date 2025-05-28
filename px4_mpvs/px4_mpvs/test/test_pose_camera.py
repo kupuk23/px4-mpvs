@@ -3,7 +3,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Pose
 import rclpy.parameter
 import rclpy.parameter_client
-from vs_msgs.srv import SetServoPose
+from vs_msgs.srv import SetHomePose
 from vs_msgs.msg import ServoPoses
 from mpc_msgs.srv import SetPose
 from std_srvs.srv import SetBool
@@ -62,7 +62,7 @@ class VisualServo(Node):
 
         # Create a client for the set_pose service
         self.client_servo = self.create_client(
-            SetServoPose, f"{self.namespace_prefix}/set_servo_pose"
+            SetHomePose, f"{self.namespace_prefix}/set_servo_pose"
         )
 
         self.client_set_pose = self.create_client(
@@ -143,13 +143,13 @@ class VisualServo(Node):
 
         self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds
-        self.timer = self.create_timer(timer_period, self.servoing_callback)
+        self.timer = self.create_timer(timer_period, self.aligning_callback)
 
-    def servoing_callback(self):
+    def aligning_callback(self):
         current_time = self.get_clock().now()
-        time_diff = (
-            current_time - self.latest_time
-        ).nanoseconds / 1e9  # Convert to seconds
+        # time_diff = (
+        #     current_time - self.latest_time
+        # ).nanoseconds / 1e9  # Convert to seconds
 
         if self.docking_enabled and self.docking_running:
             # change params in pose_estimation_pcl using dynamic reconfigure
@@ -233,12 +233,12 @@ class VisualServo(Node):
         self.obj_pose_history = []
         # self.last_consistent_goal_pose = None
 
-        self.stop_servoing()
+        self.stop_aligning()
 
-    def stop_servoing(self):
-        req = SetServoPose.Request()
+    def stop_aligning(self):
+        req = SetHomePose.Request()
         req.pose = Pose()
-        req.servoing_mode = False
+        req.align_mode = False
 
         future = self.client_servo.call_async(req)
         future.add_done_callback(self.service_callback)
@@ -331,16 +331,16 @@ class VisualServo(Node):
             and not self.docking_running
         ):
             # self.docking_enabled = False
-            self.get_logger().info("Pose consistent, forwarding to servoing service")
+            self.get_logger().info("Pose consistent, forwarding to align service")
 
 
             if map_goal_pose is None:
                 self.get_logger().warn("Failed to transform pose, skipping")
                 return
             
-            request = SetServoPose.Request()
+            request = SetHomePose.Request()
             request.pose = map_goal_pose.pose
-            request.servoing_mode = True
+            request.align_mode = True
 
             # Send the request asynchronously
             future = self.client_servo.call_async(request)

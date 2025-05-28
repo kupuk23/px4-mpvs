@@ -68,7 +68,7 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 from px4_mpvs.controllers.spacecraft_vs_mpc import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
-from vs_msgs.srv import SetServoPose
+from vs_msgs.srv import SetHomePose
 from vs_msgs.msg import ServoPoses
 from utils.ibvs_utils import calc_interaction_matrix
 
@@ -98,7 +98,9 @@ class SpacecraftIBMPVS(Node):
         ).value
 
         # flattened 2d coordinates of the desired points (4x2)
-        self.desired_points = np.array([[247, 169], [364, 169], [247, 307], [364, 307]]).flatten()
+        self.desired_points = np.array(
+            [[74, 125], [543, 126], [74, 279], [543, 279]]
+        ).flatten()
         # Get mode; rate, wrench, direct_allocation
         self.mode = self.declare_parameter("mode", "direct_allocation").value
         self.sitl = True
@@ -149,13 +151,12 @@ class SpacecraftIBMPVS(Node):
 
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
-        self.Z = None
-        self.servoing = False
+        self.Z = np.zeros(4)
+        self.aligning = False
         self.servo_mode = "ibvs"  # pbvs or ibvs
         self.markers_detected = False
         self.controller_loaded = False
-
-
+        self.pre_docked = False 
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -200,7 +201,7 @@ class SpacecraftIBMPVS(Node):
         )
 
         self.set_servo_srv = self.create_service(
-            SetServoPose,
+            SetHomePose,
             f"{self.namespace_prefix}/set_servo_pose",
             self.servo_srv_callback,
         )
@@ -459,23 +460,36 @@ class SpacecraftIBMPVS(Node):
 
             # Solve MPC
             # check if p_obj is zeros
-            if self.servo_mode == "pbvs":
-                if not self.servoing:
+            if self.servo_mode == "pbvs" and not self.pre_docked:
+                if not self.aligning:
                     u_pred, x_pred = self.mpc.solve(x0, ref=ref)
                 else:
                     u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
-            elif self.servo_mode == "ibvs" and self.controller_loaded:
-                u_pred, x_pred = self.mpc.solve(x0, ref=ref, Z=self.Z)
+            elif self.servo_mode == "ibvs":
+                if self.controller_loaded and not self.pre_docked:
+                    u_pred, x_pred = self.mpc.solve(x0, ref=ref, Z=self.Z)
+
                 # debug reference and current image state
                 feature_current = x0[13:21].flatten()  # Current features
                 feature_desired = ref[13:21, 0].flatten()  # Desired features
-                error = feature_current - feature_desired
+                error = np.linalg.norm(feature_current - feature_desired)
                 print(f"Feature current: {feature_current}")
                 print(f"Feature desired: {feature_desired}")
                 print(f"Feature errors: {error}")
+
+                if error < 10 :
+                    print("Features are close enough, stopping servoing")
+                    self.pre_docked = True
+
                 # L = calc_interaction_matrix(feature_current, self.Z)
 
                 # print(f"Interaction matrix L: {L}")
+
+            if self.pre_docked:
+                u_pred = np.zeros((self.mpc.N + 1, 4))
+                u_pred[:, 0] = 0.05
+                u_pred[:, 1] = 0.05
+                x_pred = x0.reshape(1, -1).repeat(self.mpc.N + 1, axis=0)
 
             # Colect data
             idx = 0
@@ -492,6 +506,7 @@ class SpacecraftIBMPVS(Node):
             self.publish_reference(self.reference_pub, self.setpoint_position)
 
             if self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+                
                 self.publish_direct_actuator_setpoint(u_pred)
 
     def add_set_pos_callback(self, request, response):
@@ -527,19 +542,17 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude[2] = msg.pose.orientation.y
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
-    def servo_srv_callback(
-        self, request: SetServoPose, response: SetServoPose.Response
-    ):
-        if request.servoing_mode:
+    def servo_srv_callback(self, request: SetHomePose, response: SetHomePose.Response):
+        if request.align_mode:
             self.update_setpoint(request)
-            self.servoing = True
-            self.get_logger().info("Starting visual servoing")
+            self.aligning = True
+            self.get_logger().info("Starting homing mode")
         else:
-            self.servoing = False
-            self.get_logger().info("Stopping visual servoing")
+            self.aligning = False
+            self.get_logger().info("Stopping homing mode")
 
-        self.mpc.update_constraints(self.servoing)
-        print("Servoing mode: ", self.servoing)
+        self.mpc.update_constraints(self.aligning)
+        print("Servoing mode: ", self.aligning)
         return response
 
 
