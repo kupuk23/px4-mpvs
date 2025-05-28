@@ -70,6 +70,7 @@ from px4_mpvs.controllers.spacecraft_vs_mpc import SpacecraftVSMPC
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetServoPose
 from vs_msgs.msg import ServoPoses
+from utils.ibvs_utils import calc_interaction_matrix
 
 
 def vector2PoseMsg(frame_id, position, attitude):
@@ -337,7 +338,7 @@ class SpacecraftIBMPVS(Node):
         msg.pose.orientation.z = 0.0
 
         pub.publish(msg)
-        
+
     def publish_direct_actuator_setpoint(self, u_pred):
         actuator_outputs_msg = ActuatorMotors()
         actuator_outputs_msg.timestamp = int(Clock().now().nanoseconds / 1000)
@@ -390,6 +391,8 @@ class SpacecraftIBMPVS(Node):
         return
 
     def cmdloop_callback(self):
+
+        #TODO: change wall into 4 big points and test the normal IBVS//
 
         if (
             self.servo_mode == "ibvs"
@@ -485,8 +488,9 @@ class SpacecraftIBMPVS(Node):
                 print(f"Feature current: {feature_current}")
                 print(f"Feature desired: {feature_desired}")
                 print(f"Feature errors: {error}")
+                L = calc_interaction_matrix(feature_current, self.Z)
 
-
+                print(f"Interaction matrix L: {L}")
 
             # Colect data
             idx = 0
