@@ -98,20 +98,7 @@ class SpacecraftIBMPVS(Node):
         ).value
 
         # flattened 2d coordinates of the desired points (4x2)
-        self.desired_points = np.array(
-            [
-                220,
-                108,
-                439,
-                107,
-                220,
-                366,
-                439,
-                367,
-            ],  # top-left, top-right, bottom-left, bottom-right
-            dtype=np.int16,
-        )
-
+        self.desired_points = np.array([[247, 169], [364, 169], [247, 307], [364, 307]]).flatten()
         # Get mode; rate, wrench, direct_allocation
         self.mode = self.declare_parameter("mode", "direct_allocation").value
         self.sitl = True
@@ -168,13 +155,7 @@ class SpacecraftIBMPVS(Node):
         self.markers_detected = False
         self.controller_loaded = False
 
-        if self.servo_mode == "pbvs":
-            self.model = SpacecraftVSModel(mode="pbvs")
-            self.mpc = SpacecraftVSMPC(
-                self.model,
-                mode="pbvs",
-            )
-            self.controller_loaded = True
+
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -392,7 +373,7 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
 
-        #TODO: change wall into 4 big points and test the normal IBVS//
+        # TODO: change wall into 4 big points and test the normal IBVS//
 
         if (
             self.servo_mode == "ibvs"
@@ -401,6 +382,10 @@ class SpacecraftIBMPVS(Node):
         ):
             self.model = SpacecraftVSModel(mode="ibvs")
             self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", Z=self.Z)
+            self.controller_loaded = True
+        elif self.servo_mode == "pbvs" and not self.controller_loaded:
+            self.model = SpacecraftVSModel(mode="pbvs")
+            self.mpc = SpacecraftVSMPC(self.model, mode="pbvs")
             self.controller_loaded = True
 
         if self.controller_loaded:
@@ -488,9 +473,9 @@ class SpacecraftIBMPVS(Node):
                 print(f"Feature current: {feature_current}")
                 print(f"Feature desired: {feature_desired}")
                 print(f"Feature errors: {error}")
-                L = calc_interaction_matrix(feature_current, self.Z)
+                # L = calc_interaction_matrix(feature_current, self.Z)
 
-                print(f"Interaction matrix L: {L}")
+                # print(f"Interaction matrix L: {L}")
 
             # Colect data
             idx = 0

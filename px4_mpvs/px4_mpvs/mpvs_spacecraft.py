@@ -88,7 +88,7 @@ class SpacecraftMPVS(Node):
         self.camera_frame_id = self.declare_parameter('camera_frame_id', 'camera_link').value
 
         # Get mode; rate, wrench, direct_allocation
-        self.mode = self.declare_parameter('mode', 'wrench').value
+        self.mode = self.declare_parameter('mode', 'direct_allocation').value
         self.sitl = True
 
         # Get namespace
@@ -455,7 +455,7 @@ class SpacecraftMPVS(Node):
                            self.vehicle_angular_velocity[1],
                            self.vehicle_angular_velocity[2]]).reshape(13, 1)
             ref = np.concatenate((self.setpoint_position,       # position
-                                  np.zeros(3),                  # velocity
+                                  np.array([0,0.5,0]),                  # velocity
                                   self.setpoint_attitude,       # attitude
                                   np.zeros(3),                  # angular velocity
                                   np.zeros(4)), axis=0)         # inputs reference (u1, ..., u4) for 2D platform

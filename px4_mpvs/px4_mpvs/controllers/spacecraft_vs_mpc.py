@@ -116,8 +116,8 @@ class SpacecraftVSMPC:
         # set cost
         Q_mat = np.diag(
             [
-                *[5e1] * 3,  # Position weights (x, y, z)
-                *[1e1] * 3,  # Velocity weights (vx, vy, vz)
+                *[5e1] * 3,  # Position weights (x, y, z) # 5e1
+                *[1e1] * 3,  # Velocity weights (vx, vy, vz) 
                 8e3,  # Quaternion scalar part, 8e3 default
                 *[1e1] * 3,  # angular vel part, (ωx, ωy, ωz)
             ]
@@ -178,13 +178,21 @@ class SpacecraftVSMPC:
             Q_mat = np.diag(
                 [
                     *[0] * 3,  # Position weights (x, y, z)
-                    *[5e4] * 3,  # Velocity weights (vx, vy, vz) # 5e1
+                    *[2e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
                     0,  # Quaternion scalar part, 8e3 default
-                    *[5e4] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
-                    *[5e-2] * 8,  # Image feature weights
+                    *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
+                    *[5e-3] * 8,  # Image feature weights
                 ]
             )
             Q_e = 20 * Q_mat
+            Q_e[9:,9:] = 1e2 * Q_mat[9:,9:]
+
+            # set bounds for image features (x coordinates)
+            ocp.constraints.idxbx = np.array(
+                [13, 15, 17, 19]
+            )
+            ocp.constraints.lbx = np.array([self.s_min] * 4)
+            ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         ocp.model.cost_expr_ext_cost = (
             x_error.T @ Q_mat @ x_error + u_error.T @ R_mat @ u_error
@@ -212,12 +220,7 @@ class SpacecraftVSMPC:
             [self.vel_limit] * 6
         )
 
-        # set bounds for image features (x coordinates)
-        ocp.constraints.idxbx = np.array(
-            [13, 15, 17, 19]
-        )
-        ocp.constraints.lbx = np.array([self.s_min] * 4)
-        ocp.constraints.ubx = np.array([self.s_max] * 4)
+        
 
         # set options
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"

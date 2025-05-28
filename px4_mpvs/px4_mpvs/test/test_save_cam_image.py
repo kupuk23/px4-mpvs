@@ -31,7 +31,7 @@ class SaveImage(Node):
             np_arr = np.frombuffer(msg.data, np.uint8)
             cv_image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
             cv2.imwrite(
-                f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/{filename}.jpg",
+                f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/{filename}.jpg",
                 cv_image,
             )
         except Exception as e:

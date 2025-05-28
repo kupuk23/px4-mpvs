@@ -6,7 +6,10 @@ from itertools import combinations, permutations
 import os
 import matplotlib
 
-# matplotlib.use("TkAgg")  # Use a non-interactive backend
+matplotlib.use("TkAgg")  # Use a non-interactive backend
+
+
+img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/docked_image.jpg"
 
 
 class CircleFeatureDetector:
@@ -115,13 +118,10 @@ class CircleFeatureDetector:
             hsv, (0, 0, 0), (200, 255, 40)  # lower-H, lower-S, **very low V**
         )  # upper-H, upper-S, **dark V only**
 
-        # contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        # mask_filled = np.zeros_like(mask)
-        # for c in contours:
-        #     cv2.drawContours(mask_filled, [c], -1, 255, -1)  # -1 = filled
-
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
+
+        # cv2.imshow("Morphology Mask", mask)
 
         kp = self.detector.detect(mask)
         img_with_keypoints = cv2.drawKeypoints(
@@ -367,3 +367,21 @@ class CircleFeatureDetector:
         """Clean up OpenCV windows when object is destroyed"""
         if self.visualize:
             cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    detector = CircleFeatureDetector(
+        min_circle_radius=5,
+        max_circle_radius=50,
+        circularity_threshold=0.8,
+        match_threshold=10.0,
+        visualize=True,
+        debug=True,
+    )
+
+    image = cv2.imread(img_path)
+    cv2.imshow("Input Image", image)
+    
+    centroids, _ = detector.detect(image)
+    cv2.waitKey(0)
+    print(centroids)

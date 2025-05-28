@@ -156,9 +156,20 @@ class SpacecraftVSModel:
             # v_cam = Rbc*(v_base + w_base x r_bc)
             # no rotation in the camera frame, Rbc = I
             r_bc = cs.DM([0.09, 0.0, 0.51])  # camera translation from base frame
-            v_c = v + cs.cross(w, r_bc)
-            w_c = w
-            twist = cs.vertcat(v_c, w_c)  # 6x1
+            v_cam = v - cs.cross(w, r_bc)
+            w_cam = w
+            v_standard = cs.vertcat(
+            -v_cam[1],  # X_std = -Y_your (right = -left)
+            -v_cam[2],  # Y_std = -Z_your (down = -up)
+             v_cam[0]   # Z_std = X_your (forward = forward)
+        )
+        
+            w_standard = cs.vertcat(
+                -w_cam[1],  # Roll around X_std = -pitch around Y_your
+                -w_cam[2],  # Pitch around Y_std = -yaw around Z_your  
+                w_cam[0]   # Yaw around Z_std = roll around X_your
+            )
+            twist = cs.vertcat(v_standard, w_standard)  # 6x1
             s_dot_vec = cs.mtimes(L, twist)  # 8x1
             # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
             return s_dot_vec
