@@ -1,5 +1,6 @@
 # Request to define the SetPose service with a Pose message and a boolean flag for servoing mode
 geometry_msgs/Pose pose
 bool align_mode
+bool aligned
 ---
 bool result

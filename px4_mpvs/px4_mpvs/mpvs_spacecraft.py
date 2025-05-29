@@ -96,7 +96,7 @@ class SpacecraftMPVS(Node):
         self.namespace_prefix = f'/{self.namespace}' if self.namespace else ''
 
         # Get setpoint from rviz (true/false)
-        self.setpoint_from_rviz = self.declare_parameter('setpoint_from_rviz', False).value
+        self.setpoint_from_rviz = self.declare_parameter('setpoint_from_rviz', True).value
 
         # QoS profiles
         qos_profile_pub = QoSProfile(

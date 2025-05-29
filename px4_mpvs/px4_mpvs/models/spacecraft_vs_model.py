@@ -39,7 +39,8 @@ import numpy as np
 class SpacecraftVSModel:
     def __init__(self, mode: str = "pbvs"):
         self.mode = mode
-        self.name = "spacecraft_visual_servo_model"
+
+        self.name = "spacecraft_ibvs_model" if mode == "ibvs" else "spacecraft_pbvs_model"
 
 
         if self.mode == "ibvs":

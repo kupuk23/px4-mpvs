@@ -233,12 +233,14 @@ class VisualServo(Node):
         self.obj_pose_history = []
         # self.last_consistent_goal_pose = None
 
-        self.stop_aligning()
+        self.stop_aligning(aligned=True)
 
-    def stop_aligning(self):
+    def stop_aligning(self, aligned = False):
         req = SetHomePose.Request()
         req.pose = Pose()
         req.align_mode = False
+        req.aligned = aligned
+
 
         future = self.client_servo.call_async(req)
         future.add_done_callback(self.service_callback)

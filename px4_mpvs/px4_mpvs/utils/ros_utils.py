@@ -74,6 +74,20 @@ def generate_goal_from_object_pose(object_pose,tf_buffer, x_offset, clock):
     return transformed_pose_stamped, transformed_obj_pose
 
 
+def vector2PoseMsg(frame_id, position, attitude):
+    pose_msg = PoseStamped()
+    # msg.header.stamp = Clock().now().nanoseconds / 1000
+    pose_msg.header.frame_id = frame_id
+    pose_msg.header.frame_id = frame_id
+    pose_msg.pose.orientation.w = attitude[0]
+    pose_msg.pose.orientation.x = attitude[1]
+    pose_msg.pose.orientation.y = attitude[2]
+    pose_msg.pose.orientation.z = attitude[3]
+    pose_msg.pose.position.x = float(position[0])
+    pose_msg.pose.position.y = float(position[1])
+    pose_msg.pose.position.z = float(position[2])
+    return pose_msg
+
 def lookup_transform(tf_buffer, target_frame, source_frame):
     """
     Lookup the transform between two frames using the provided tf_buffer.
