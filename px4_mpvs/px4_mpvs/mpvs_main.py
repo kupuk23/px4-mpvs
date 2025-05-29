@@ -63,35 +63,33 @@ from px4_msgs.msg import VehicleRatesSetpoint
 from px4_msgs.msg import ActuatorMotors
 from px4_msgs.msg import VehicleTorqueSetpoint
 from px4_msgs.msg import VehicleThrustSetpoint
+from vs_msgs.msg import ServoPoses
 
 from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 from px4_mpvs.controllers.spacecraft_vs_mpc import SpacecraftVSMPC
 
+from std_srvs.srv import SetBool
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
-from vs_msgs.msg import ServoPoses
-from utils.ibvs_utils import calc_interaction_matrix
 
 
-def vector2PoseMsg(frame_id, position, attitude):
-    pose_msg = PoseStamped()
-    # msg.header.stamp = Clock().now().nanoseconds / 1000
-    pose_msg.header.frame_id = frame_id
-    pose_msg.header.frame_id = frame_id
-    pose_msg.pose.orientation.w = attitude[0]
-    pose_msg.pose.orientation.x = attitude[1]
-    pose_msg.pose.orientation.y = attitude[2]
-    pose_msg.pose.orientation.z = attitude[3]
-    pose_msg.pose.position.x = float(position[0])
-    pose_msg.pose.position.y = float(position[1])
-    pose_msg.pose.position.z = float(position[2])
-    return pose_msg
+from px4_mpvs.ibvs_controller import handle_ibvs_control
+from px4_mpvs.pbvs_controller import handle_pbvs_control
+
+
 
 
 class SpacecraftIBMPVS(Node):
 
     def __init__(self):
         super().__init__("spacecraft_ib_mpvs")
+
+
+        self.servo_mode = "pbvs"  # pbvs or ibvs
+
+        self.srv = self.create_service(
+            SetBool, "run_docking", self.docking_callback_enabled
+        )
 
         self.camera_frame_id = self.declare_parameter(
             "camera_frame_id", "camera_link"
@@ -111,7 +109,7 @@ class SpacecraftIBMPVS(Node):
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
-            "setpoint_from_rviz", False
+            "setpoint_from_rviz", True
         ).value
 
         # QoS profiles
@@ -153,13 +151,41 @@ class SpacecraftIBMPVS(Node):
         self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
         self.Z = np.zeros(4)
         self.aligning = False
-        self.servo_mode = "ibvs"  # pbvs or ibvs
         self.markers_detected = False
-        self.controller_loaded = False
         self.pre_docked = False 
+        self.switch_mode('pbvs')
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+    def docking_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        self.docking_enabled = request.data
+        response.success = True
+        if self.docking_enabled:
+            # self.enable_goicp(True)  # Enable GOICP
+            self.controller_loaded = False
+            self.switch_mode('ibvs')  # Switch to docking mode
+            self.controller_loaded = True
+            response.message = "Docking mode enabled"
+            self.get_logger().info("Docking mode enabled")
+        else:
+            response.message = "Docking mode disabled"
+            self.get_logger().info("Docking mode disabled")
+        return response
+
+    def switch_mode(self, mode = 'pbvs'):
+        if mode == "pbvs":
+            self.get_logger().info("Loading PBVS controller")
+            self.model = SpacecraftVSModel(mode="pbvs")
+            self.mpc = SpacecraftVSMPC(self.model, mode="pbvs")
+            self.servo_mode = "pbvs"
+        else:
+            self.get_logger().info("Loading IBVS controller")
+            self.model = SpacecraftVSModel(mode="ibvs")
+            self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", Z=self.Z)
+            self.servo_mode = "ibvs"
+        
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
@@ -223,26 +249,12 @@ class SpacecraftIBMPVS(Node):
             f"{self.namespace_prefix}/fmu/in/offboard_control_mode",
             qos_profile_pub,
         )
-        self.publisher_rates_setpoint = self.create_publisher(
-            VehicleRatesSetpoint,
-            f"{self.namespace_prefix}/fmu/in/vehicle_rates_setpoint",
-            qos_profile_pub,
-        )
         self.publisher_direct_actuator = self.create_publisher(
             ActuatorMotors,
             f"{self.namespace_prefix}/fmu/in/actuator_motors",
             qos_profile_pub,
         )
-        self.publisher_thrust_setpoint = self.create_publisher(
-            VehicleThrustSetpoint,
-            f"{self.namespace_prefix}/fmu/in/vehicle_thrust_setpoint",
-            qos_profile_pub,
-        )
-        self.publisher_torque_setpoint = self.create_publisher(
-            VehicleTorqueSetpoint,
-            f"{self.namespace_prefix}/fmu/in/vehicle_torque_setpoint",
-            qos_profile_pub,
-        )
+
         self.predicted_path_pub = self.create_publisher(
             Path, f"{self.namespace_prefix}/px4_mpc/predicted_path", 10
         )
@@ -375,139 +387,10 @@ class SpacecraftIBMPVS(Node):
     def cmdloop_callback(self):
 
         # TODO: change wall into 4 big points and test the normal IBVS//
-
-        if (
-            self.servo_mode == "ibvs"
-            and self.markers_detected
-            and not self.controller_loaded
-        ):
-            self.model = SpacecraftVSModel(mode="ibvs")
-            self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", Z=self.Z)
-            self.controller_loaded = True
-        elif self.servo_mode == "pbvs" and not self.controller_loaded:
-            self.model = SpacecraftVSModel(mode="pbvs")
-            self.mpc = SpacecraftVSMPC(self.model, mode="pbvs")
-            self.controller_loaded = True
-
-        if self.controller_loaded:
-
-            # Publish odometry for SITL
-            if self.sitl:
-                self.publish_sitl_odometry()
-
-            # Publish offboard control modes
-            offboard_msg = OffboardControlMode()
-            offboard_msg.timestamp = int(Clock().now().nanoseconds / 1000)
-            offboard_msg.position = False
-            offboard_msg.velocity = False
-            offboard_msg.acceleration = False
-            offboard_msg.attitude = False
-            offboard_msg.body_rate = False
-            offboard_msg.direct_actuator = True
-            self.publisher_offboard_mode.publish(offboard_msg)
-
-            # Set state and references for each MPC
-            if not self.controller_loaded:
-                return
-
-            x0 = np.array(
-                [
-                    self.vehicle_local_position[0],
-                    self.vehicle_local_position[1],
-                    self.vehicle_local_position[2],
-                    self.vehicle_local_velocity[0],
-                    self.vehicle_local_velocity[1],
-                    self.vehicle_local_velocity[2],
-                    self.vehicle_attitude[0],
-                    self.vehicle_attitude[1],
-                    self.vehicle_attitude[2],
-                    self.vehicle_attitude[3],
-                    self.vehicle_angular_velocity[0],
-                    self.vehicle_angular_velocity[1],
-                    self.vehicle_angular_velocity[2],
-                ]
-            ).reshape(13, 1)
-
-            ref = np.concatenate(
-                (
-                    self.setpoint_position,  # position
-                    np.zeros(3),  # velocity
-                    self.setpoint_attitude,  # attitude
-                    np.zeros(3),  # angular velocity
-                    np.zeros(4),  # inputs reference (u1, ..., u4) for 2D platform
-                ),
-                axis=0,
-            )
-
-            if self.servo_mode == "ibvs" and self.controller_loaded:
-                p_markers = self.p_markers.reshape(8, -1)
-                x0 = np.vstack((x0, p_markers))
-
-                s_d = self.desired_points.flatten()
-                ref = np.concatenate(
-                    (
-                        self.setpoint_position,  # position
-                        np.zeros(3),  # velocity
-                        self.setpoint_attitude,  # attitude
-                        np.zeros(3),  # angular velocity
-                        s_d,
-                        np.zeros(4),  # inputs reference (u1, ..., u4) for 2D platform
-                    ),
-                    axis=0,
-                )
-
-            ref = np.repeat(ref.reshape((-1, 1)), self.mpc.N + 1, axis=1)
-
-            # Solve MPC
-            # check if p_obj is zeros
-            if self.servo_mode == "pbvs" and not self.pre_docked:
-                if not self.aligning:
-                    u_pred, x_pred = self.mpc.solve(x0, ref=ref)
-                else:
-                    u_pred, x_pred = self.mpc.solve(x0, ref=ref, p_obj=self.p_obj)
-            elif self.servo_mode == "ibvs":
-                if self.controller_loaded and not self.pre_docked:
-                    u_pred, x_pred = self.mpc.solve(x0, ref=ref, Z=self.Z)
-
-                # debug reference and current image state
-                feature_current = x0[13:21].flatten()  # Current features
-                feature_desired = ref[13:21, 0].flatten()  # Desired features
-                error = np.linalg.norm(feature_current - feature_desired)
-                print(f"Feature current: {feature_current}")
-                print(f"Feature desired: {feature_desired}")
-                print(f"Feature errors: {error}")
-
-                if error < 10 :
-                    print("Features are close enough, stopping servoing")
-                    self.pre_docked = True
-
-                # L = calc_interaction_matrix(feature_current, self.Z)
-
-                # print(f"Interaction matrix L: {L}")
-
-            if self.pre_docked:
-                u_pred = np.zeros((self.mpc.N + 1, 4))
-                u_pred[:, 0] = 0.05
-                u_pred[:, 1] = 0.05
-                x_pred = x0.reshape(1, -1).repeat(self.mpc.N + 1, axis=0)
-
-            # Colect data
-            idx = 0
-            predicted_path_msg = Path()
-            for predicted_state in x_pred:
-                idx = idx + 1
-                # Publish time history of the vehicle path
-                predicted_pose_msg = vector2PoseMsg(
-                    "map", predicted_state[0:3], self.setpoint_attitude
-                )
-                predicted_path_msg.header = predicted_pose_msg.header
-                predicted_path_msg.poses.append(predicted_pose_msg)
-            self.predicted_path_pub.publish(predicted_path_msg)
-            self.publish_reference(self.reference_pub, self.setpoint_position)
-
-            if self.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
-                
-                self.publish_direct_actuator_setpoint(u_pred)
+        if self.servo_mode == "ibvs" and self.markers_detected:
+            handle_ibvs_control(self)
+        elif self.servo_mode == "pbvs":
+            handle_pbvs_control(self)
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)
