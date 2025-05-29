@@ -55,6 +55,9 @@ class SpacecraftVSMPC:
                 [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
             )
         )
+
+        
+        self.Z0 = Z if Z is not None else np.array([1.0] * 4)
         if self.mode == "pbvs":
             self.ineq_bounds = 1e4
             self.w_slack = 0
@@ -68,7 +71,7 @@ class SpacecraftVSMPC:
             self.s_min = 10
             self.s_max = 640 - 10 # 640x480 image
 
-            self.Z0 = Z if Z is not None else np.array([1.0] * 4)
+           
             self.ocp_solver, self.integrator = self.setup(
                 self.x0, self.N, self.Tf, Z0=self.Z0
             )
@@ -147,10 +150,14 @@ class SpacecraftVSMPC:
         ocp.cost.cost_type = "EXTERNAL"
         ocp.cost.cost_type_e = "EXTERNAL"
 
+
+        p_obj = ocp.model.p[0:3]
+
+        Z = ocp.model.p
+
         if self.mode == "pbvs":
             assert p_obj0 is not None, "p_obj0 must be provided for PBVS mode"
             # Initialize parameters
-            p_obj = ocp.model.p[0:3]
 
             ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj)
 
@@ -167,7 +174,6 @@ class SpacecraftVSMPC:
             # add x_error for image features
             x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
-            Z = ocp.model.p
             ocp.model.p = cs.vertcat(x_ref, u_ref, Z)
 
             p_0 = np.concatenate(

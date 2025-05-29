@@ -59,13 +59,13 @@ def handle_ibvs_control(node):
         ),
         axis=0,
     )
-    ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
+    ref = np.repeat(ref.reshape((-1, 1)), node.ibvs_mpc.N + 1, axis=1)
 
     # Solve MPC
     # check if p_obj is zeros
 
     if not node.pre_docked:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, Z=node.Z)
+        u_pred, x_pred = node.ibvs_mpc.solve(x0, ref=ref, Z=node.Z)
 
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
@@ -84,10 +84,10 @@ def handle_ibvs_control(node):
         # print(f"Interaction matrix L: {L}")
 
     if node.pre_docked:
-        u_pred = np.zeros((node.mpc.N + 1, 4))
+        u_pred = np.zeros((node.ibvs_mpc.N + 1, 4))
         u_pred[:, 0] = 0.05
         u_pred[:, 1] = 0.05
-        x_pred = x0.reshape(1, -1).repeat(node.mpc.N + 1, axis=0)
+        x_pred = x0.reshape(1, -1).repeat(node.ibvs_mpc.N + 1, axis=0)
 
     # Colect data
     idx = 0

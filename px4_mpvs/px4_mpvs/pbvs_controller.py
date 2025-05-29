@@ -55,13 +55,13 @@ def handle_pbvs_control(node):
         axis=0,
     )
 
-    ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
+    ref = np.repeat(ref.reshape((-1, 1)), node.pbvs_mpc.N + 1, axis=1)
 
     # Solve MPC
     if not node.aligning:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref)
+        u_pred, x_pred = node.pbvs_mpc.solve(x0, ref=ref)
     elif np.any(node.p_obj):
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj)
+        u_pred, x_pred = node.pbvs_mpc.solve(x0, ref=ref, p_obj=node.p_obj)
     else:
         return
     # Colect data

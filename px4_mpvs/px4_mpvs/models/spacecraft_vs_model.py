@@ -182,11 +182,15 @@ class SpacecraftVSModel:
 
         x = cs.vertcat(p, v, q, w)
 
+        p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
+        Z = cs.MX.sym("Z", 4)            # Feature depths (used in IBVS, dummy in PBVS)
+        s = cs.MX.sym("s", 8)            # Image features (used in IBVS, dummy in PBVS)
+    
+
         if self.mode == "pbvs":
             # compute bearing inequality
 
-            p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
-
+            
             g_x = define_visual_constraint(p_obj, p, q)
 
             # Define nonlinear constraint
@@ -198,8 +202,6 @@ class SpacecraftVSModel:
             model.p = model_params  # Use object position as parameter
 
         else:
-            s = cs.MX.sym("s", 8)
-            Z = cs.MX.sym("Z", 4)
             # Define the image dynamics here
             L = self._get_interaction_matrix(s, Z)
 
@@ -240,7 +242,6 @@ class SpacecraftVSModel:
         v_dot = cs.MX.sym("v_dot", 3)
         q_dot = cs.MX.sym("q_dot", 4)
         w_dot = cs.MX.sym("w_dot", 3)
-        s_dot = cs.MX.sym("s_dot", 8)
 
         xdot = cs.vertcat(p_dot, v_dot, q_dot, w_dot)
 
@@ -255,6 +256,7 @@ class SpacecraftVSModel:
         )
 
         if self.mode == "ibvs":
+            s_dot = cs.MX.sym("s_dot", 8)
             f_expl = cs.vertcat(f_expl, _get_feature_dynamics(L, v, w))
             xdot = cs.vertcat(xdot, s_dot)
 

@@ -153,7 +153,7 @@ class SpacecraftIBMPVS(Node):
         self.aligning = False
         self.markers_detected = False
         self.pre_docked = False 
-        self.switch_mode('pbvs')
+        self.load_models()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -163,10 +163,7 @@ class SpacecraftIBMPVS(Node):
         self.docking_enabled = request.data
         response.success = True
         if self.docking_enabled:
-            # self.enable_goicp(True)  # Enable GOICP
-            self.controller_loaded = False
-            self.switch_mode('ibvs')  # Switch to docking mode
-            self.controller_loaded = True
+            self.servo_mode = "ibvs"
             response.message = "Docking mode enabled"
             self.get_logger().info("Docking mode enabled")
         else:
@@ -174,17 +171,13 @@ class SpacecraftIBMPVS(Node):
             self.get_logger().info("Docking mode disabled")
         return response
 
-    def switch_mode(self, mode = 'pbvs'):
-        if mode == "pbvs":
-            self.get_logger().info("Loading PBVS controller")
-            self.model = SpacecraftVSModel(mode="pbvs")
-            self.mpc = SpacecraftVSMPC(self.model, mode="pbvs")
-            self.servo_mode = "pbvs"
-        else:
-            self.get_logger().info("Loading IBVS controller")
-            self.model = SpacecraftVSModel(mode="ibvs")
-            self.mpc = SpacecraftVSMPC(self.model, mode="ibvs", Z=self.Z)
-            self.servo_mode = "ibvs"
+    def load_models(self):
+
+        self.pbvs_model = SpacecraftVSModel(mode="pbvs")
+        self.pbvs_mpc = SpacecraftVSMPC(self.pbvs_model, mode="pbvs")
+
+        self.ibvs_model = SpacecraftVSModel(mode="ibvs")
+        self.ibvs_mpc = SpacecraftVSMPC(self.ibvs_model, mode="ibvs", Z=self.Z)
         
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
