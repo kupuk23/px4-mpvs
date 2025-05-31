@@ -42,7 +42,7 @@ class SpacecraftVSMPC:
         self.mode = mode
         self.pbvs_build = False  # Set to False after the first run to avoid rebuilding
         self.ibvs_build = False  # Set to False after the first run to avoid rebuilding
-        self.vel_limit = 0.5  # np.inf .1
+        self.vel_limit = 0.3  # np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
@@ -57,7 +57,7 @@ class SpacecraftVSMPC:
         if self.mode == "pbvs":
             self.ineq_bounds = 1e4
             self.w_slack = 0
-            self.p_obj0 = p_obj if p_obj is not None else np.array([10.0, 0.0, 0.0])
+            self.p_obj0 = p_obj if p_obj is not None else np.array([-10.0, 0.0, 0.0])
             self.ocp_solver, self.integrator = self.setup(
                 self.x0, self.N, self.Tf, self.p_obj0
             )
@@ -115,10 +115,10 @@ class SpacecraftVSMPC:
         # set cost
         Q_mat = np.diag(
             [
-                *[8e1] * 3,  # Position weights (x, y, z) # 5e1
-                *[1e1] * 3,  # Velocity weights (vx, vy, vz) 
+                *[5e1] * 3,  # Position weights (x, y, z) # 5e1
+                *[5e1] * 3,  # Velocity weights (vx, vy, vz) 
                 8e3,  # Quaternion scalar part, 8e3 default
-                *[1e1] * 3,  # angular vel part, (ωx, ωy, ωz)
+                *[5e1] * 3,  # angular vel part, (ωx, ωy, ωz)
             ]
         )
         Q_e = 20 * Q_mat
@@ -177,14 +177,14 @@ class SpacecraftVSMPC:
             Q_mat = np.diag(
                 [
                     *[0] * 3,  # Position weights (x, y, z)
-                    *[4e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
+                    *[5e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
                     0,  # Quaternion scalar part, 8e3 default
                     *[9e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
-                    *[7e-3] * 8,  # Image feature weights
+                    *[5e-3] * 8,  # Image feature weights
                 ]
             )
             Q_e = 20 * Q_mat
-            Q_e[9:,9:] = 50 * Q_mat[9:,9:]
+            Q_e[9:,9:] = 60 * Q_mat[9:,9:]
 
             # set bounds for image features (x coordinates)
             ocp.constraints.idxbx = np.array(
@@ -264,7 +264,7 @@ class SpacecraftVSMPC:
 
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = 5e2 if servoing_enabled else 0  # 4e2
+        self.w_slack = 2e3 if servoing_enabled else 0  # 4e2
 
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None):
         if self.mode == "ibvs":

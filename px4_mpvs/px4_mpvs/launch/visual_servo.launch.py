@@ -97,7 +97,7 @@ def generate_launch_description():
             namespace=namespace,
             executable='ibvs_main',
             name='ibvs_main',
-            output='screen',
+            # output='screen',
             emulate_tty=True,
             parameters=[
                 {'namespace': namespace},
