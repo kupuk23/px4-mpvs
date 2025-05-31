@@ -71,8 +71,8 @@ def handle_ibvs_control(node):
         feature_current = x0[13:21].flatten()  # Current features
         feature_desired = ref[13:21, 0].flatten()  # Desired features
         error = np.linalg.norm(feature_current - feature_desired)
-        print(f"Feature current: {feature_current}")
-        print(f"Feature desired: {feature_desired}")
+        # print(f"Feature current: {feature_current}")
+        # print(f"Feature desired: {feature_desired}")
         print(f"Feature errors: {error}")
 
         if error < 10:

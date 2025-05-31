@@ -288,24 +288,24 @@
         "nz": 0
     },
     "external_function_files_model": [
-        "spacecraft_visual_servo_model_model/spacecraft_visual_servo_model_expl_ode_fun.c",
-        "spacecraft_visual_servo_model_model/spacecraft_visual_servo_model_expl_vde_forw.c",
-        "spacecraft_visual_servo_model_model/spacecraft_visual_servo_model_expl_vde_adj.c"
+        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_ode_fun.c",
+        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_vde_forw.c",
+        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_vde_adj.c"
     ],
     "external_function_files_ocp": [
-        "spacecraft_visual_servo_model_constraints/spacecraft_visual_servo_model_constr_h_fun_jac_uxt_zt.c",
-        "spacecraft_visual_servo_model_constraints/spacecraft_visual_servo_model_constr_h_fun.c",
-        "spacecraft_visual_servo_model_constraints/spacecraft_visual_servo_model_constr_h_e_fun_jac_uxt_zt.c",
-        "spacecraft_visual_servo_model_constraints/spacecraft_visual_servo_model_constr_h_e_fun.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_0_fun.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_0_fun_jac_hess.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_0_fun_jac.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_fun.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_fun_jac_hess.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_fun_jac.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_e_fun.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_e_fun_jac_hess.c",
-        "spacecraft_visual_servo_model_cost/spacecraft_visual_servo_model_cost_ext_cost_e_fun_jac.c"
+        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_fun_jac_uxt_zt.c",
+        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_fun.c",
+        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_e_fun_jac_uxt_zt.c",
+        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_e_fun.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun_jac_hess.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun_jac.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun_jac_hess.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun_jac.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun_jac_hess.c",
+        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun_jac.c"
     ],
     "json_file": "acados_ocp.json",
     "model": {
@@ -352,7 +352,7 @@
         "f_impl_expr": "@1=q[2], @2=q[3], @3=q[1], @4=q[0], @5=mac(((((zeros(2x4)[0] = 1)[2] = 1)[5] = -1)[7] = -1),u,zeros(2x1)), @6=w[1], @7=mac(\n[[0.1454, 0, 0], \n [0, 0.1366, 0], \n [0, 0, 0.1594]],w,zeros(3x1)), @8=@7[2], @9=w[2], @10=@7[1], @11=@7[0], @12=w[0], (vertcat(p_dot, v_dot, q_dot, w_dot)-vertcat(v, (mac(horzcat(horzcat((1-(2.*(sq(@1)+sq(@2)))), (2.*((@3*@1)-(@4*@2))), (2.*((@3*@2)+(@4*@1))))', horzcat((2.*((@3*@1)+(@4*@2))), (1-(2.*(sq(@3)+sq(@2)))), (2.*((@1*@2)-(@4*@3))))', horzcat((2.*((@3*@2)-(@4*@1))), (2.*((@1*@2)+(@4*@3))), (1-(2.*(sq(@3)+sq(@1)))))')',vertcat(@5[0], @5[1], 0),zeros(3x1))/16.8), (0.5*mac(horzcat(horzcat(0, (-w[0]), (-w[1]), (-w[2]))', horzcat(w[0], 0, w[2], (-w[1]))', horzcat(w[1], (-w[2]), 0, w[0])', horzcat(w[2], w[1], (-w[0]), 0)')',q,zeros(4x1))), mac(\n[[6.87758, 0, 0], \n [0, 7.32064, 0], \n [0, 0, 6.27353]],(vertcat(0, 0, mac((0.12*((((zeros(1x4)[0] = -1)[1] = 1)[2] = -1)[3] = 1)),u,0))-vertcat(((@6*@8)-(@9*@10)), ((@9*@11)-(@12*@8)), ((@12*@10)-(@6*@11)))),zeros(3x1))))",
         "gnsf_nontrivial_f_LO": 1,
         "gnsf_purely_linear": 0,
-        "name": "spacecraft_visual_servo_model",
+        "name": "spacecraft_pbvs_model",
         "nu_original": null,
         "p": "vertcat(x_ref, u_ref, p_obj)",
         "p_global": "0x1",
@@ -366,7 +366,7 @@
         "xdot": "vertcat(p_dot, v_dot, q_dot, w_dot)",
         "z": "0x1"
     },
-    "name": "spacecraft_visual_servo_model",
+    "name": "spacecraft_pbvs_model",
     "p_global_values": [],
     "parameter_values": [
         0.0,

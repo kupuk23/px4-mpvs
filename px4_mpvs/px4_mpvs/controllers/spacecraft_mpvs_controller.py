@@ -177,9 +177,9 @@ class SpacecraftVSMPC:
             Q_mat = np.diag(
                 [
                     *[0] * 3,  # Position weights (x, y, z)
-                    *[6e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
+                    *[4e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
                     0,  # Quaternion scalar part, 8e3 default
-                    *[5e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
+                    *[9e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
                     *[7e-3] * 8,  # Image feature weights
                 ]
             )

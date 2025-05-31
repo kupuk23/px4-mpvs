@@ -62,7 +62,7 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 from px4_mpvs.controllers.spacecraft_vs_mpc import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
-from vs_msgs.srv import SetServoPose
+from vs_msgs.srv import SetHomePose
 from vs_msgs.msg import ServoPoses
 
 def vector2PoseMsg(frame_id, position, attitude):
@@ -191,7 +191,7 @@ class SpacecraftMPVS(Node):
             qos_profile_sub)
         
         self.set_servo_srv = self.create_service(
-                SetServoPose,
+                SetHomePose,
                 f'{self.namespace_prefix}/set_servo_pose',
                 self.servo_srv_callback
             )
@@ -538,7 +538,7 @@ class SpacecraftMPVS(Node):
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
 
-    def servo_srv_callback(self, request : SetServoPose, response: SetServoPose.Response):
+    def servo_srv_callback(self, request : SetHomePose, response: SetHomePose.Response):
         if request.servoing_mode:
             self.update_setpoint(request)
             self.servoing = True

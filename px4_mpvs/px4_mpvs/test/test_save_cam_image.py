@@ -7,7 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "docked_image"
+filename = "docked_image_v3"
 
 
 class SaveImage(Node):

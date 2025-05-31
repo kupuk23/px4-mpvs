@@ -78,16 +78,13 @@ from px4_mpvs.ibvs_controller import handle_ibvs_control
 from px4_mpvs.pbvs_controller import handle_pbvs_control
 
 
-
-
 class SpacecraftIBMPVS(Node):
 
     def __init__(self):
         super().__init__("spacecraft_ib_mpvs")
 
-
-        self.servo_mode = "pbvs"  # pbvs or ibvs
-        self.aligning_threshold = 0.1
+        self.servo_mode = "ibvs"  # pbvs or ibvs
+        self.aligning_threshold = 0.2
 
         # self.srv = self.create_service(
         #     SetBool, "run_docking", self.docking_callback_enabled
@@ -99,7 +96,12 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [[74, 125], [543, 126], [74, 279], [543, 279]]
+            [
+                [99, 186],
+                [535, 187],
+                [190, 394],
+                [481, 277],
+            ]
         ).flatten()
         # Get mode; rate, wrench, direct_allocation
         self.mode = self.declare_parameter("mode", "direct_allocation").value
@@ -154,12 +156,11 @@ class SpacecraftIBMPVS(Node):
         self.Z = np.zeros(4)
         self.aligning = False
         self.markers_detected = False
-        self.pre_docked = False 
+        self.pre_docked = False
         self.switch_mode(self.servo_mode)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-
 
     def switch_mode(self, mode):
         if mode == "pbvs":
@@ -172,7 +173,6 @@ class SpacecraftIBMPVS(Node):
             self.model = SpacecraftVSModel(mode="ibvs")
             self.mpc = SpacecraftVSMPC(self.model, Z=self.Z, mode="ibvs")
             self.servo_mode = "ibvs"
-        
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
