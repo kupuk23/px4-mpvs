@@ -37,22 +37,21 @@ import numpy as np
 
 
 class SpacecraftVSModel:
-    def __init__(self, mode: str = "pbvs"):
-        self.mode = mode
+    def __init__(self):
+        
 
-        self.name = "spacecraft_ibvs_model" if mode == "ibvs" else "spacecraft_pbvs_model"
+        self.name = "spacecraft_mpavs_model"
 
+        # Camera intrinsic parameters
+        self.K = np.array(
+            [
+                [500.0, 0.0, 320.0],  # fx, 0, cx
+                [0.0, 500.0, 240.0],  # 0, fy, cy
+                [0.0, 0.0, 1.0],  # 0, 0, 1
+            ]
+        )
 
-        if self.mode == "ibvs":
             
-            # Camera intrinsic parameters
-            self.K = np.array(
-                [
-                    [500.0, 0.0, 320.0],  # fx, 0, cx
-                    [0.0, 500.0, 240.0],  # 0, fy, cy
-                    [0.0, 0.0, 1.0],  # 0, 0, 1
-                ]
-            )
 
         # constants
         self.mass = 16.8
@@ -180,39 +179,29 @@ class SpacecraftVSModel:
         v = cs.MX.sym("v", 3)
         q = cs.MX.sym("q", 4)
         w = cs.MX.sym("w", 3)
+        s = cs.MX.sym("s", 8)
 
-        x = cs.vertcat(p, v, q, w)
+        # Setup external parameters
+        Z = cs.MX.sym("Z", 4)
+        p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
+        w_p = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
+        
 
-        if self.mode == "pbvs":
-            # compute bearing inequality
+        x = cs.vertcat(p, v, q, w, s)
 
-            p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
+        # compute bearing inequality
+        
+        g_x = define_visual_constraint(p_obj, p, q)
 
-            g_x = define_visual_constraint(p_obj, p, q)
+        # Define nonlinear constraint
+        model.con_h_expr = g_x
+        model.con_h_expr_e = g_x
 
-            # Define nonlinear constraint
-            model.con_h_expr = g_x
-            model.con_h_expr_e = g_x
+        # Add model parameters
+        model_params = cs.vertcat(p_obj, Z, w_p)  # 
 
-            # Add model parameters
-            model_params = p_obj
-            model.p = model_params  # Use object position as parameter
-
-        else:
-            s = cs.MX.sym("s", 8)
-            Z = cs.MX.sym("Z", 4)
-            # Define the image dynamics here
-            L = self._get_interaction_matrix(s, Z)
-
-            # define the penalty cost : h(k) - s_d
-
-            # e_s = h_k - s_d
-            # s_cost = cs.mtimes(e_s, e_s.T)
-            # model.cost_expr_ext_cost = s_cost
-            # model.cost_expr_ext_cost_e = s_cost
-            model_params = Z
-            model.p = model_params
-            x = cs.vertcat(x, s)
+        # Define the image dynamics
+        L = self._get_interaction_matrix(s, Z)
         
 
         u = cs.MX.sym("u", 4)
@@ -243,7 +232,7 @@ class SpacecraftVSModel:
         w_dot = cs.MX.sym("w_dot", 3)
         s_dot = cs.MX.sym("s_dot", 8)
 
-        xdot = cs.vertcat(p_dot, v_dot, q_dot, w_dot)
+        xdot = cs.vertcat(p_dot, v_dot, q_dot, w_dot, s_dot)
 
         a_thrust = v_dot_q(F, q) / self.mass
 
@@ -253,11 +242,9 @@ class SpacecraftVSModel:
             a_thrust,
             1 / 2 * cs.mtimes(skew_symmetric(w), q),
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
+            _get_feature_dynamics(L, v, w)
         )
 
-        if self.mode == "ibvs":
-            f_expl = cs.vertcat(f_expl, _get_feature_dynamics(L, v, w))
-            xdot = cs.vertcat(xdot, s_dot)
 
         f_impl = xdot - f_expl
 
@@ -266,6 +253,7 @@ class SpacecraftVSModel:
         model.x = x
         model.xdot = xdot
         model.u = u
+        model.p = model_params 
         model.name = self.name
 
         return model

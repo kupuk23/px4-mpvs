@@ -76,6 +76,7 @@ from vs_msgs.srv import SetHomePose
 
 from px4_mpvs.ibvs_controller import handle_ibvs_control
 from px4_mpvs.pbvs_controller import handle_pbvs_control
+from px4_mpvs.hybrid_control import handle_hybrid_control
 
 
 class SpacecraftIBMPVS(Node):
@@ -152,7 +153,7 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis
 
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
-        self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
+        self.p_markers = np.zeros(8)  # flattened 2d coordinates of the detected markers
         self.Z = np.zeros(4)
         self.recorded_markers = np.zeros(8)  # for recording markers
         self.recorded_p_error = np.zeros(3)  # for recording position error
@@ -160,22 +161,11 @@ class SpacecraftIBMPVS(Node):
         self.aligning = False
         self.markers_detected = False
         self.pre_docked = False
-        self.switch_mode(self.servo_mode)
+        self.model = SpacecraftVSModel()
+        self.mpc = SpacecraftVSMPC(self.model)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-
-    def switch_mode(self, mode):
-        if mode == "pbvs":
-            self.get_logger().info("Loading PBVS controller")
-            self.model = SpacecraftVSModel(mode="pbvs")
-            self.mpc = SpacecraftVSMPC(self.model, mode="pbvs")
-            self.servo_mode = "pbvs"
-        else:
-            self.get_logger().info("Loading IBVS controller")
-            self.model = SpacecraftVSModel(mode="ibvs")
-            self.mpc = SpacecraftVSMPC(self.model, Z=self.Z, mode="ibvs")
-            self.servo_mode = "ibvs"
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
@@ -272,14 +262,12 @@ class SpacecraftIBMPVS(Node):
         self.markers_detected = True
 
     def vehicle_attitude_callback(self, msg):
-        # TODO: handle NED->ENU transformation
         self.vehicle_attitude[0] = msg.q[0]
         self.vehicle_attitude[1] = msg.q[1]
         self.vehicle_attitude[2] = -msg.q[2]
         self.vehicle_attitude[3] = -msg.q[3]
 
     def vehicle_local_position_callback(self, msg):
-        # TODO: handle NED->ENU transformation
         self.vehicle_local_position[0] = msg.x
         self.vehicle_local_position[1] = -msg.y
         self.vehicle_local_position[2] = -msg.z
@@ -288,7 +276,6 @@ class SpacecraftIBMPVS(Node):
         self.vehicle_local_velocity[2] = -msg.vz
 
     def vehicle_angular_velocity_callback(self, msg):
-        # TODO: handle NED->ENU transformation
         self.vehicle_angular_velocity[0] = msg.xyz[0]
         self.vehicle_angular_velocity[1] = -msg.xyz[1]
         self.vehicle_angular_velocity[2] = -msg.xyz[2]
@@ -375,12 +362,7 @@ class SpacecraftIBMPVS(Node):
         return
 
     def cmdloop_callback(self):
-
-        # TODO: change wall into 4 big points and test the normal IBVS//
-        if self.servo_mode == "ibvs" and self.markers_detected:
-            handle_ibvs_control(self)
-        elif self.servo_mode == "pbvs":
-            handle_pbvs_control(self)
+        handle_hybrid_control(self)
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)
