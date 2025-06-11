@@ -40,12 +40,11 @@ import time
 class SpacecraftVSMPC:
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False  # Set to False after the first run to avoid rebuilding
         self.vel_limit = 0.3  # np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
-
 
         self.x0 = (
             x0
@@ -129,7 +128,6 @@ class SpacecraftVSMPC:
         ocp.dims.N = N_horizon
         ocp.solver_options.N_horizon = N_horizon
 
-
         # References:
         x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 states + 8 features
         u_ref = cs.MX.sym("u_ref", (nu, 1))
@@ -156,7 +154,7 @@ class SpacecraftVSMPC:
         # Initialize parameters
         p_obj = ocp.model.p[0:3]
         Z = ocp.model.p[3:7]
-        w_p = ocp.model.p[7] 
+        w_p = ocp.model.p[7]
 
         x0 = np.concatenate((x0, np.zeros(8)))
 
@@ -167,7 +165,6 @@ class SpacecraftVSMPC:
         p_0 = np.concatenate(
             (x0, np.zeros(nu), p_obj0, Z0)
         )  # s0 = features state, Z = feature depth
-
 
         # set weights for the cost function
         Qp_mat = np.diag(
@@ -193,9 +190,11 @@ class SpacecraftVSMPC:
         Q_mat = w_p * Qp_mat + (1 - w_p) * Qs_mat
 
         S_mat = np.diag(
-            *[5e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+            [
+                *[5e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+            ]
         )
-        S_mat = (1-w_p) * S_mat
+        S_mat = (1 - w_p) * S_mat
 
         Q_e = 20 * Q_mat
         S_mat_e = 50 * S_mat
@@ -203,13 +202,13 @@ class SpacecraftVSMPC:
         R_mat = np.diag([1e1] * 4)
 
         ocp.model.cost_expr_ext_cost = (
-            x_error[:9].T @ Q_mat @ x_error[:9]
+            x_error[:10].T @ Q_mat @ x_error[:10]
             + u_error.T @ R_mat @ u_error
-            + x_error[9:].T @ S_mat @ x_error[9:]
+            + x_error[10:].T @ S_mat @ x_error[10:]
         )
 
         ocp.model.cost_expr_ext_cost_e = (
-            x_error[:9].T @ Q_e @ x_error[:9] + x_error[9:].T @ S_mat_e @ x_error[9:]
+            x_error[:10].T @ Q_e @ x_error[:10] + x_error[10:].T @ S_mat_e @ x_error[10:]
         )
 
         ocp.parameter_values = p_0

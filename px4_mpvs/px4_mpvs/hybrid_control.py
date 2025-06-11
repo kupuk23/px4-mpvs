@@ -47,7 +47,7 @@ def handle_hybrid_control(node):
             node.vehicle_angular_velocity[2],
             *p_markers
         ]
-    ).reshape(13, 1)
+    ).reshape(21, 1)
 
     ref = np.concatenate(
         (
