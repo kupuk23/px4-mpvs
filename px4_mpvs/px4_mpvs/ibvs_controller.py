@@ -6,6 +6,8 @@ from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import OffboardControlMode
 from nav_msgs.msg import Path, Odometry
 
+from px4_mpvs.utils.plot_utils import plot_features
+
 
 def handle_ibvs_control(node):
 
@@ -43,10 +45,9 @@ def handle_ibvs_control(node):
             node.vehicle_angular_velocity[0],
             node.vehicle_angular_velocity[1],
             node.vehicle_angular_velocity[2],
-            *p_markers
+            *p_markers,
         ]
     ).reshape(21, 1)
-
 
     ref = np.concatenate(
         (
@@ -75,9 +76,20 @@ def handle_ibvs_control(node):
         # print(f"Feature desired: {feature_desired}")
         print(f"Feature errors: {error}")
 
+        # record the features
+        node.recorded_markers = np.vstack((node.recorded_markers, feature_current))
+
         if error < 10:
             print("Features are close enough, stopping servoing")
             node.pre_docked = True
+            final_pose = node.vehicle_local_position
+            final_pose = np.append(
+                final_pose, node.vehicle_attitude
+            )
+            #save the features to a file
+            np.save("recorded_markers.npy", node.recorded_markers)
+            np.save("final_pose.npy", final_pose)
+            plot_features(node.recorded_markers, node.desired_points)
 
         # L = calc_interaction_matrix(feature_current, node.Z)
 

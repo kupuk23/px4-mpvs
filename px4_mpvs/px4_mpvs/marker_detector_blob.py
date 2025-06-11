@@ -111,18 +111,18 @@ class CircleFeatureDetector:
             if self.debug:
                 print("Target points not set. Using default ordering.")
 
-        # Convert to grayscale
         img_blur = cv2.GaussianBlur(img, (3, 3), 0)
 
         hsv = cv2.cvtColor(img_blur, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(
-            hsv, (0, 0, 0), (200, 255, 40)  # lower-H, lower-S, **very low V**
-        )  # upper-H, upper-S, **dark V only**
+            hsv, (0, 0, 0), (200, 255, 40)  # only accept low V
+        ) 
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
-        # cv2.imshow("Morphology Mask", mask)
+
+        cv2.imshow("Morphology Mask", mask)
 
         kp = self.detector.detect(mask)
         img_with_keypoints = cv2.drawKeypoints(

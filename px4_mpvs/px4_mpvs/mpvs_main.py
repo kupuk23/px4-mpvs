@@ -83,7 +83,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_ib_mpvs")
 
-        self.servo_mode = "pbvs"  # pbvs or ibvs
+        self.servo_mode = "ibvs"  # pbvs or ibvs
         self.aligning_threshold = 0.2
 
         # self.srv = self.create_service(
@@ -154,6 +154,9 @@ class SpacecraftIBMPVS(Node):
         self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([0.0, 0.0])  # object position in camera frame
         self.Z = np.zeros(4)
+        self.recorded_markers = np.zeros(8)  # for recording markers
+        self.recorded_p_error = np.zeros(3)  # for recording position error
+
         self.aligning = False
         self.markers_detected = False
         self.pre_docked = False

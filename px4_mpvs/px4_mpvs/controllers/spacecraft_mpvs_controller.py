@@ -179,12 +179,12 @@ class SpacecraftVSMPC:
                     *[0] * 3,  # Position weights (x, y, z)
                     *[5e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1
                     0,  # Quaternion scalar part, 8e3 default
-                    *[9e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
+                    *[8e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1
                     *[5e-3] * 8,  # Image feature weights
                 ]
             )
             Q_e = 20 * Q_mat
-            Q_e[9:,9:] = 60 * Q_mat[9:,9:]
+            Q_e[9:,9:] = 50 * Q_mat[9:,9:]
 
             # set bounds for image features (x coordinates)
             ocp.constraints.idxbx = np.array(
