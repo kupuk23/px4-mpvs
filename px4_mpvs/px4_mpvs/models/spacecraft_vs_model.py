@@ -50,6 +50,7 @@ class SpacecraftVSModel:
                 [0.0, 0.0, 1.0],  # 0, 0, 1
             ]
         )
+        self.K = cs.DM(self.K)  # Convert to CasADi DM for compatibility
 
             
 
