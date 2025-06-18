@@ -42,7 +42,7 @@ class SpacecraftVSMPC:
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
         self.build = True  # Set to False after the first run to avoid rebuilding
-        self.vel_limit = 0.8  # np.inf .1
+        self.vel_limit = 0.5  # np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
@@ -177,7 +177,7 @@ class SpacecraftVSMPC:
         Qp = np.diag(
             [
                 *[5e1] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[5e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[7e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 *[5e2] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
@@ -263,7 +263,7 @@ class SpacecraftVSMPC:
 
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = 2e3 if servoing_enabled else 0  # 4e2
+        self.w_slack = 2e3 if servoing_enabled else 0  # 2e3, TODO: set to 0 for no slack
 
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None):
 

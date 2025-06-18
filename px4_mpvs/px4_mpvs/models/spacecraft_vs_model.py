@@ -34,6 +34,7 @@
 from acados_template import AcadosModel
 import casadi as cs
 import numpy as np
+from px4_mpvs.utils.math_utils import quat_mul_cs
 
 
 class SpacecraftVSModel:
@@ -133,10 +134,19 @@ class SpacecraftVSModel:
 
         def define_visual_constraint(p_obj, p, q):
 
+            # rotate q 180 degrees around the z-axis
+            # This is for the camera frame being reversed
+            # q = [cos(θ/2), 0, 0, sin(θ/2)]
+
+            quat_rot_z = cs.DM([0,0,0,1])  # Quaternion representing 180 degrees rotation around z-axis
+            q_rotated = quat_mul_cs(q,quat_rot_z)
+
+
+
             r_I = p_obj - p  # Vector from robot to object in inertial frame
 
             # Transform to body frame using the rotation matrix
-            r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q)), r_I)
+            r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q_rotated)), r_I)
 
             # Compute vector norm
             r_B_norm = cs.sqrt(

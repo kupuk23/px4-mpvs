@@ -25,7 +25,6 @@ from rclpy.qos import (
 import px4_mpvs.utils.math_utils as math_utils
 
 
-
 class VisualServo(Node):
     def __init__(self):
         super().__init__("visual_servo")
@@ -59,6 +58,8 @@ class VisualServo(Node):
         )
 
         self.goal_pub = self.create_publisher(ServoPoses, "/pbvs_pose", 10)
+        self.goal_posestamped_pub = self.create_publisher(
+            PoseStamped, f"{self.namespace_prefix}/goal_pose_offset", 10)
 
         # Create a client for the set_pose service
         self.client_servo = self.create_client(
@@ -123,11 +124,16 @@ class VisualServo(Node):
 
         # [ 0.11974171 -1.50361025  0.35518408] [ 8.64499688e-01  7.21904883e-08 -3.61660879e-09  5.02633214e-01]
 
-
         # Spawn Pose #2
-        self.init_pos = np.array([00.11974171 ,-1.50361025, 0])
+        # self.init_pos = np.array([0.11974171, -1.50361025, 0])
+        # self.init_att = np.array(
+        #     [8.64499688e-01, 7.21904883e-08, -3.61660879e-09, 5.02633214e-01]
+        # )
+
+        # Spawn pose Reversed
+        self.init_pos = np.array([1.56462193e-07, 1.405, 0])
         self.init_att = np.array(
-            [8.64499688e-01 , 7.21904883e-08, -3.61660879e-09,  5.02633214e-01]
+            [2.17068925e-01, 1.25027753e-07, -2.44279164e-07, 9.76156294e-01]
         )
 
         self.param_client = self.create_client(
@@ -154,12 +160,19 @@ class VisualServo(Node):
         if self.docking_enabled and self.docking_running:
             # change params in pose_estimation_pcl using dynamic reconfigure
             self.check_docking_status()
-            map_goal_pose = ros_utils.generate_pose_stamped(self.last_consistent_goal_pose, clock=self.get_clock())
+            map_goal_pose = ros_utils.generate_pose_stamped(
+                self.last_consistent_goal_pose, clock=self.get_clock()
+            )
             msg = ServoPoses()
             msg.goal_pose_stamped = map_goal_pose
             msg.obj_pose = self.last_consistent_obj_pose
 
             self.goal_pub.publish(msg)
+
+            # make  goal posestamped object and publish to the topic
+            goal_posestamped = map_goal_pose
+            self.goal_posestamped_pub.publish(goal_posestamped)
+
             # if time_diff > 1:
             #     self.enable_goicp(False)
             #     self.reset_all_variables()
@@ -191,7 +204,7 @@ class VisualServo(Node):
         )
 
         print(f"position error: {position_err:.2f} m")
-        print(f"orientation error: {orientation_err:.2f} degrees")
+        print(f"orientation error: {orientation_err:.2f} degrees") #TODO: FIX THIS BECAUSE REVERSED CAMERA
 
         # Check if we're within thresholds
         if (
@@ -235,12 +248,11 @@ class VisualServo(Node):
 
         self.stop_aligning(aligned=True)
 
-    def stop_aligning(self, aligned = False):
+    def stop_aligning(self, aligned=False):
         req = SetHomePose.Request()
         req.pose = Pose()
         req.align_mode = False
         req.aligned = aligned
-
 
         future = self.client_servo.call_async(req)
         future.add_done_callback(self.service_callback)
@@ -307,16 +319,15 @@ class VisualServo(Node):
         self.latest_time = self.get_clock().now()
 
         map_goal_pose, map_obj_pose = ros_utils.generate_goal_from_object_pose(
-                msg.pose,
-                self.tf_buffer,
-                self.x_offset,
-                self.get_clock(),
-            )
+            msg.pose,
+            self.tf_buffer,
+            self.x_offset,
+            self.get_clock(),
+        )
         if map_goal_pose is None:
             self.get_logger().warn("Failed to transform pose, skipping")
             return
-        
-        
+
         # Store the pose in history for consistency check
         self.obj_pose_history.append(map_obj_pose)
         self.goal_pose_history.append(map_goal_pose.pose)
@@ -335,11 +346,10 @@ class VisualServo(Node):
             # self.docking_enabled = False
             self.get_logger().info("Pose consistent, forwarding to align service")
 
-
             if map_goal_pose is None:
                 self.get_logger().warn("Failed to transform pose, skipping")
                 return
-            
+
             request = SetHomePose.Request()
             request.pose = map_goal_pose.pose
             request.align_mode = True
