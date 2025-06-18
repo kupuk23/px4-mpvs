@@ -35,13 +35,14 @@ from acados_template import AcadosOcp, AcadosOcpSolver, AcadosSimSolver
 import numpy as np
 import casadi as cs
 import time
+from px4_mpvs.utils.math_utils import quat_error
 
 
 class SpacecraftVSMPC:
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
-        self.vel_limit = 0.3  # np.inf .1
+        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.vel_limit = 0.8  # np.inf .1
         self.model = model
         self.Tf = 5.0
         self.N = 49
@@ -92,9 +93,9 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
 
         # set bounds for image features (x coordinates)
-        ocp.constraints.idxbx = np.array([13, 15, 17, 19])
-        ocp.constraints.lbx = np.array([self.s_min] * 4)
-        ocp.constraints.ubx = np.array([self.s_max] * 4)
+        # ocp.constraints.idxbx = np.array([13, 15, 17, 19])
+        # ocp.constraints.lbx = np.array([self.s_min] * 4)
+        # ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -129,7 +130,7 @@ class SpacecraftVSMPC:
         ocp.solver_options.N_horizon = N_horizon
 
         # References:
-        x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 states + 8 features
+        x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 robot states + 8 features states
         u_ref = cs.MX.sym("u_ref", (nu, 1))
 
         # Calculate errors
@@ -138,14 +139,16 @@ class SpacecraftVSMPC:
 
         x = ocp.model.x
         u = ocp.model.u
+        
+        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
 
-        q_ref = cs.if_else(cs.dot(x[6:10], x_ref[6:10]) < 0, -x_ref[6:10], x_ref[6:10])
-
+        
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
         # x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
+        x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
 
-        x_error = cs.vertcat(x_error, 2*(q_ref))
+        # x_error = cs.vertcat(x_error, 2*(q_ref))
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
@@ -171,49 +174,49 @@ class SpacecraftVSMPC:
         )  # s0 = features state, Z = feature depth
 
         # set weights for the cost function
-        Qp_mat = np.diag(
+        Qp = np.diag(
             [
                 *[5e1] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[5e1] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                8e3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[5e1] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[5e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[5e2] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
+                *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
-        Qs_mat = np.diag(
+        Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
                 *[5e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                0,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
+                *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[8e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
         w_p = 1
 
-        Q_mat = w_p * Qp_mat + (1 - w_p) * Qs_mat
+        Q = w_p * Qp + (1 - w_p) * Qs
 
-        S_mat = np.diag(
+        S = np.diag(
             [
                 *[5e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
             ]
         )
-        S_mat = (1 - w_p) * S_mat
+        S = (1 - w_p) * S
 
-        Q_e = 20 * Q_mat
-        S_mat_e = 50 * S_mat
+        Q_e = 20 * Q
+        S_e = 50 * S
 
         R_mat = np.diag([1e1] * 4)
 
         ocp.model.cost_expr_ext_cost = (
-            x_error[:10].T @ Q_mat @ x_error[:10]
+            x_error[:12].T @ Q @ x_error[:12]
             + u_error.T @ R_mat @ u_error
-            + x_error[10:].T @ S_mat @ x_error[10:]
+            + x_error[12:].T @ S @ x_error[12:]
         )
 
         ocp.model.cost_expr_ext_cost_e = (
-            x_error[:10].T @ Q_e @ x_error[:10]
-            + x_error[10:].T @ S_mat_e @ x_error[10:]
+            x_error[:12].T @ Q_e @ x_error[:12]
+            + x_error[12:].T @ S_e @ x_error[12:]
         )
 
         ocp.parameter_values = p_0
@@ -272,7 +275,11 @@ class SpacecraftVSMPC:
             )
             zero_ref[6] = 1.0
 
-        ref[6:10, :] = self.debug_quaternion_reference(x0, ref[:, 0])
+        # ref[6:10, :] = self.debug_quaternion_reference(x0, ref[:, 0])
+        # q_err = quat_error(x0[6:10], ref[6:10,0])  # Quaternion error
+        # # print the quaternion error for debugging
+        # print(f"Quaternion error: {q_err}")
+
 
         p_obj = p_obj if p_obj is not None else self.p_obj0
         Z = Z if Z is not None else self.Z0
@@ -318,35 +325,3 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         return simU, simX
-
-    def debug_quaternion_reference(self, x0, x_ref):
-        q_current = x0[6:10].flatten()  # Current quaternion
-        q_ref = x_ref[6:10].flatten()  # Reference quaternion
-
-        # Debug: Check if quaternions are normalized
-        norm_current = np.linalg.norm(q_current)
-        norm_ref = np.linalg.norm(q_ref)
-        print(f"q_current norm: {norm_current:.4f}")
-        print(f"q_ref norm: {norm_ref:.4f}")
-
-        # Normalize quaternions if needed
-        if norm_current > 1e-6:
-            q_current = q_current / norm_current
-        if norm_ref > 1e-6:
-            q_ref = q_ref / norm_ref
-
-        # Check dot product - should be positive for shortest path
-        # dot_product = np.dot(q_current, q_ref)
-        dot_product = q_current.T @ q_ref  # Using dot product for quaternions
-        print(f"Quaternion dot product: {dot_product}")
-
-        if dot_product < 0:
-            print("WARNING: Quaternions are on opposite hemispheres!")
-            # Flip reference quaternion
-            q_ref = -q_ref
-
-        q_ref = np.repeat(
-            q_ref.reshape(4, 1), self.N + 1, axis=1
-        )  # Ensure it is a column vector
-
-        return q_ref

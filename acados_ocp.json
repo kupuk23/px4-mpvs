@@ -16,14 +16,7 @@
             2,
             3
         ],
-        "idxbx": [
-            3,
-            4,
-            5,
-            10,
-            11,
-            12
-        ],
+        "idxbx": [],
         "idxbx_0": [
             0,
             1,
@@ -60,13 +53,9 @@
         "idxsbx_e": [],
         "idxsg": [],
         "idxsg_e": [],
-        "idxsh": [
-            0
-        ],
+        "idxsh": [],
         "idxsh_0": [],
-        "idxsh_e": [
-            0
-        ],
+        "idxsh_e": [],
         "idxsphi": [],
         "idxsphi_0": [],
         "idxsphi_e": [],
@@ -76,14 +65,7 @@
             -1.5,
             -1.5
         ],
-        "lbx": [
-            -5,
-            -5,
-            -5,
-            -5,
-            -5,
-            -5
-        ],
+        "lbx": [],
         "lbx_0": [
             0.0,
             0.0,
@@ -102,13 +84,9 @@
         "lbx_e": [],
         "lg": [],
         "lg_e": [],
-        "lh": [
-            -10000.0
-        ],
+        "lh": [],
         "lh_0": [],
-        "lh_e": [
-            -10000.0
-        ],
+        "lh_e": [],
         "lphi": [],
         "lphi_0": [],
         "lphi_e": [],
@@ -117,13 +95,9 @@
         "lsbx_e": [],
         "lsg": [],
         "lsg_e": [],
-        "lsh": [
-            0.0
-        ],
+        "lsh": [],
         "lsh_0": [],
-        "lsh_e": [
-            0.0
-        ],
+        "lsh_e": [],
         "lsphi": [],
         "lsphi_0": [],
         "lsphi_e": [],
@@ -133,14 +107,7 @@
             1.5,
             1.5
         ],
-        "ubx": [
-            5,
-            5,
-            5,
-            5,
-            5,
-            5
-        ],
+        "ubx": [],
         "ubx_0": [
             0.0,
             0.0,
@@ -159,13 +126,9 @@
         "ubx_e": [],
         "ug": [],
         "ug_e": [],
-        "uh": [
-            0.0
-        ],
+        "uh": [],
         "uh_0": [],
-        "uh_e": [
-            0.0
-        ],
+        "uh_e": [],
         "uphi": [],
         "uphi_0": [],
         "uphi_e": [],
@@ -174,13 +137,9 @@
         "usbx_e": [],
         "usg": [],
         "usg_e": [],
-        "ush": [
-            0.0
-        ],
+        "ush": [],
         "ush_0": [],
-        "ush_e": [
-            0.0
-        ],
+        "ush_e": [],
         "usphi": [],
         "usphi_0": [],
         "usphi_e": []
@@ -196,20 +155,12 @@
         "W": [],
         "W_0": [],
         "W_e": [],
-        "Zl": [
-            0.0
-        ],
+        "Zl": [],
         "Zl_0": [],
-        "Zl_e": [
-            0.0
-        ],
-        "Zu": [
-            0
-        ],
+        "Zl_e": [],
+        "Zu": [],
         "Zu_0": [],
-        "Zu_e": [
-            0
-        ],
+        "Zu_e": [],
         "cost_ext_fun_type": "casadi",
         "cost_ext_fun_type_0": "casadi",
         "cost_ext_fun_type_e": "casadi",
@@ -225,20 +176,12 @@
         "yref": [],
         "yref_0": [],
         "yref_e": [],
-        "zl": [
-            0.0
-        ],
+        "zl": [],
         "zl_0": [],
-        "zl_e": [
-            0.0
-        ],
-        "zu": [
-            0
-        ],
+        "zl_e": [],
+        "zu": [],
         "zu_0": [],
-        "zu_e": [
-            0
-        ]
+        "zu_e": []
     },
     "cython_include_dirs": [
         "/home/tafarrel/venv/lib/python3.12/site-packages/numpy/core/include",
@@ -248,16 +191,16 @@
         "N": 49,
         "n_global_data": 0,
         "nbu": 4,
-        "nbx": 6,
+        "nbx": 0,
         "nbx_0": 13,
         "nbx_e": 0,
         "nbxe_0": 13,
         "ng": 0,
         "ng_e": 0,
-        "nh": 1,
+        "nh": 0,
         "nh_0": 0,
-        "nh_e": 1,
-        "np": 20,
+        "nh_e": 0,
+        "np": 17,
         "np_global": 0,
         "nphi": 0,
         "nphi_0": 0,
@@ -265,17 +208,17 @@
         "nr": 0,
         "nr_0": 0,
         "nr_e": 0,
-        "ns": 1,
+        "ns": 0,
         "ns_0": 0,
-        "ns_e": 1,
+        "ns_e": 0,
         "nsbu": 0,
         "nsbx": 0,
         "nsbx_e": 0,
         "nsg": 0,
         "nsg_e": 0,
-        "nsh": 1,
+        "nsh": 0,
         "nsh_0": 0,
-        "nsh_e": 1,
+        "nsh_e": 0,
         "nsphi": 0,
         "nsphi_0": 0,
         "nsphi_e": 0,
@@ -288,30 +231,26 @@
         "nz": 0
     },
     "external_function_files_model": [
-        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_ode_fun.c",
-        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_vde_forw.c",
-        "spacecraft_pbvs_model_model/spacecraft_pbvs_model_expl_vde_adj.c"
+        "spacecraft_direct_allocation_model_model/spacecraft_direct_allocation_model_expl_ode_fun.c",
+        "spacecraft_direct_allocation_model_model/spacecraft_direct_allocation_model_expl_vde_forw.c",
+        "spacecraft_direct_allocation_model_model/spacecraft_direct_allocation_model_expl_vde_adj.c"
     ],
     "external_function_files_ocp": [
-        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_fun_jac_uxt_zt.c",
-        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_fun.c",
-        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_e_fun_jac_uxt_zt.c",
-        "spacecraft_pbvs_model_constraints/spacecraft_pbvs_model_constr_h_e_fun.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun_jac_hess.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_0_fun_jac.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun_jac_hess.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_fun_jac.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun_jac_hess.c",
-        "spacecraft_pbvs_model_cost/spacecraft_pbvs_model_cost_ext_cost_e_fun_jac.c"
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_0_fun.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_0_fun_jac_hess.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_0_fun_jac.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_fun.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_fun_jac_hess.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_fun_jac.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_e_fun.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_e_fun_jac_hess.c",
+        "spacecraft_direct_allocation_model_cost/spacecraft_direct_allocation_model_cost_ext_cost_e_fun_jac.c"
     ],
     "json_file": "acados_ocp.json",
     "model": {
-        "con_h_expr": "@1=q[2], @2=q[3], @3=q[1], @4=q[0], @5=mac(horzcat(horzcat((1-(2.*(sq(@1)+sq(@2)))), (2.*((@3*@1)-(@4*@2))), (2.*((@3*@2)+(@4*@1))))', horzcat((2.*((@3*@1)+(@4*@2))), (1-(2.*(sq(@3)+sq(@2)))), (2.*((@1*@2)-(@4*@3))))', horzcat((2.*((@3*@2)-(@4*@1))), (2.*((@1*@2)+(@4*@3))), (1-(2.*(sq(@3)+sq(@1)))))'),(p_obj-p),zeros(3x1)), ((0.984808*sqrt(((sq(@5[0])+sq(@5[1]))+sq(@5[2]))))-@5[0])",
+        "con_h_expr": [],
         "con_h_expr_0": [],
-        "con_h_expr_e": "@1=q[2], @2=q[3], @3=q[1], @4=q[0], @5=mac(horzcat(horzcat((1-(2.*(sq(@1)+sq(@2)))), (2.*((@3*@1)-(@4*@2))), (2.*((@3*@2)+(@4*@1))))', horzcat((2.*((@3*@1)+(@4*@2))), (1-(2.*(sq(@3)+sq(@2)))), (2.*((@1*@2)-(@4*@3))))', horzcat((2.*((@3*@2)-(@4*@1))), (2.*((@1*@2)+(@4*@3))), (1-(2.*(sq(@3)+sq(@1)))))'),(p_obj-p),zeros(3x1)), ((0.984808*sqrt(((sq(@5[0])+sq(@5[1]))+sq(@5[2]))))-@5[0])",
+        "con_h_expr_e": [],
         "con_phi_expr": [],
         "con_phi_expr_0": [],
         "con_phi_expr_e": [],
@@ -352,9 +291,9 @@
         "f_impl_expr": "@1=q[2], @2=q[3], @3=q[1], @4=q[0], @5=mac(((((zeros(2x4)[0] = 1)[2] = 1)[5] = -1)[7] = -1),u,zeros(2x1)), @6=w[1], @7=mac(\n[[0.1454, 0, 0], \n [0, 0.1366, 0], \n [0, 0, 0.1594]],w,zeros(3x1)), @8=@7[2], @9=w[2], @10=@7[1], @11=@7[0], @12=w[0], (vertcat(p_dot, v_dot, q_dot, w_dot)-vertcat(v, (mac(horzcat(horzcat((1-(2.*(sq(@1)+sq(@2)))), (2.*((@3*@1)-(@4*@2))), (2.*((@3*@2)+(@4*@1))))', horzcat((2.*((@3*@1)+(@4*@2))), (1-(2.*(sq(@3)+sq(@2)))), (2.*((@1*@2)-(@4*@3))))', horzcat((2.*((@3*@2)-(@4*@1))), (2.*((@1*@2)+(@4*@3))), (1-(2.*(sq(@3)+sq(@1)))))')',vertcat(@5[0], @5[1], 0),zeros(3x1))/16.8), (0.5*mac(horzcat(horzcat(0, (-w[0]), (-w[1]), (-w[2]))', horzcat(w[0], 0, w[2], (-w[1]))', horzcat(w[1], (-w[2]), 0, w[0])', horzcat(w[2], w[1], (-w[0]), 0)')',q,zeros(4x1))), mac(\n[[6.87758, 0, 0], \n [0, 7.32064, 0], \n [0, 0, 6.27353]],(vertcat(0, 0, mac((0.12*((((zeros(1x4)[0] = -1)[1] = 1)[2] = -1)[3] = 1)),u,0))-vertcat(((@6*@8)-(@9*@10)), ((@9*@11)-(@12*@8)), ((@12*@10)-(@6*@11)))),zeros(3x1))))",
         "gnsf_nontrivial_f_LO": 1,
         "gnsf_purely_linear": 0,
-        "name": "spacecraft_pbvs_model",
+        "name": "spacecraft_direct_allocation_model",
         "nu_original": null,
-        "p": "vertcat(x_ref, u_ref, p_obj)",
+        "p": "vertcat(x_ref, u_ref)",
         "p_global": "0x1",
         "t": [],
         "t0": null,
@@ -366,7 +305,7 @@
         "xdot": "vertcat(p_dot, v_dot, q_dot, w_dot)",
         "z": "0x1"
     },
-    "name": "spacecraft_pbvs_model",
+    "name": "spacecraft_direct_allocation_model",
     "p_global_values": [],
     "parameter_values": [
         0.0,
@@ -384,9 +323,6 @@
         0.0,
         0.0,
         0.0,
-        0.0,
-        0.0,
-        10.0,
         0.0,
         0.0
     ],

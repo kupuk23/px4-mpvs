@@ -74,17 +74,14 @@ from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
 
 
-from px4_mpvs.ibvs_controller import handle_ibvs_control
-from px4_mpvs.pbvs_controller import handle_pbvs_control
 from px4_mpvs.hybrid_control import handle_hybrid_control
 
 
 class SpacecraftIBMPVS(Node):
 
     def __init__(self):
-        super().__init__("spacecraft_ib_mpvs")
+        super().__init__("spacecraft_mpvs")
 
-        self.servo_mode = "ibvs"  # pbvs or ibvs
         self.aligning_threshold = 0.2
 
         # self.srv = self.create_service(

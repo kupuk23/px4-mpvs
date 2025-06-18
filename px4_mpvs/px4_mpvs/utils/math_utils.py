@@ -1,4 +1,18 @@
 import numpy as np
+import casadi as cs
+
+def quat_error(q, q2):
+    conj_q = cs.vertcat(q[0], -q[1:])
+    q_err = quat_mul_cs(conj_q, q2)
+    att_err = 2 * q_err[1:]          # 3×1
+    return att_err
+
+def quat_mul_cs(q, q2):
+    w = q[0]*q2[0] - q[1]*q2[1] - q[2]*q2[2] - q[3]*q2[3]
+    x = q[0]*q2[1] + q[1]*q2[0] + q[2]*q2[3] - q[3]*q2[2]
+    y = q[0]*q2[2] - q[1]*q2[3] + q[2]*q2[0] + q[3]*q2[1]
+    z = q[0]*q2[3] + q[1]*q2[2] - q[2]*q2[1] + q[3]*q2[0]
+    return cs.vertcat(w, x, y, z)
 
 def quaternion_multiply(quaternion1, quaternion0):
     w0, x0, y0, z0 = quaternion0
