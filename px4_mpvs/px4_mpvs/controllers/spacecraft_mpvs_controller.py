@@ -139,9 +139,13 @@ class SpacecraftVSMPC:
         x = ocp.model.x
         u = ocp.model.u
 
+        q_ref = cs.if_else(cs.dot(x[6:10], x_ref[6:10]) < 0, -x_ref[6:10], x_ref[6:10])
+
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
+        # x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
+
+        x_error = cs.vertcat(x_error, 2*(q_ref))
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
@@ -208,7 +212,8 @@ class SpacecraftVSMPC:
         )
 
         ocp.model.cost_expr_ext_cost_e = (
-            x_error[:10].T @ Q_e @ x_error[:10] + x_error[10:].T @ S_mat_e @ x_error[10:]
+            x_error[:10].T @ Q_e @ x_error[:10]
+            + x_error[10:].T @ S_mat_e @ x_error[10:]
         )
 
         ocp.parameter_values = p_0
@@ -259,12 +264,6 @@ class SpacecraftVSMPC:
 
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None):
 
-        p_obj = p_obj if p_obj is not None else self.p_obj0
-        Z = Z if Z is not None else self.Z0
-
-        # preparation phase
-        ocp_solver = self.ocp_solver
-
         # Set reference, create zero reference
         if ref is None:
             zero_ref = np.zeros(
@@ -272,6 +271,14 @@ class SpacecraftVSMPC:
                 + self.model.get_acados_model().u.size()[0]
             )
             zero_ref[6] = 1.0
+
+        ref[6:10, :] = self.debug_quaternion_reference(x0, ref[:, 0])
+
+        p_obj = p_obj if p_obj is not None else self.p_obj0
+        Z = Z if Z is not None else self.Z0
+
+        # preparation phase
+        ocp_solver = self.ocp_solver
 
         for i in range(self.N + 1):
             if i != self.N and i != 0:
@@ -311,3 +318,35 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         return simU, simX
+
+    def debug_quaternion_reference(self, x0, x_ref):
+        q_current = x0[6:10].flatten()  # Current quaternion
+        q_ref = x_ref[6:10].flatten()  # Reference quaternion
+
+        # Debug: Check if quaternions are normalized
+        norm_current = np.linalg.norm(q_current)
+        norm_ref = np.linalg.norm(q_ref)
+        print(f"q_current norm: {norm_current:.4f}")
+        print(f"q_ref norm: {norm_ref:.4f}")
+
+        # Normalize quaternions if needed
+        if norm_current > 1e-6:
+            q_current = q_current / norm_current
+        if norm_ref > 1e-6:
+            q_ref = q_ref / norm_ref
+
+        # Check dot product - should be positive for shortest path
+        # dot_product = np.dot(q_current, q_ref)
+        dot_product = q_current.T @ q_ref  # Using dot product for quaternions
+        print(f"Quaternion dot product: {dot_product}")
+
+        if dot_product < 0:
+            print("WARNING: Quaternions are on opposite hemispheres!")
+            # Flip reference quaternion
+            q_ref = -q_ref
+
+        q_ref = np.repeat(
+            q_ref.reshape(4, 1), self.N + 1, axis=1
+        )  # Ensure it is a column vector
+
+        return q_ref

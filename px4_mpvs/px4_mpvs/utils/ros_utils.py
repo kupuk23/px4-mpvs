@@ -142,16 +142,16 @@ def matrix_to_posestamped(T, lookup_transform, target_frame, stamp):
     # convert the matrix to Pose message
     q = tft.quaternion_from_matrix(T)  # (x,y,z,w)
     p = T[:3, 3]
-    q_z180 = tft.quaternion_from_euler(0, 0, np.pi)  # 180 degrees around Z axis
-    q_goal = tft.quaternion_multiply(q, q_z180)
+    # q_z180 = tft.quaternion_from_euler(0, 0, np.pi)  # 180 degrees around Z axis
+    # q_goal = tft.quaternion_multiply(q, q_z180)
 
     msg.pose.position.x = p[0]
     msg.pose.position.y = p[1]
     msg.pose.position.z = p[2]
-    msg.pose.orientation.x = q_goal[0]
-    msg.pose.orientation.y = q_goal[1]
-    msg.pose.orientation.z = q_goal[2]
-    msg.pose.orientation.w = q_goal[3]
+    msg.pose.orientation.x = q[0]
+    msg.pose.orientation.y = q[1]
+    msg.pose.orientation.z = q[2]
+    msg.pose.orientation.w = q[3]
 
     # Apply the transform to get pose in map frame
     msg.pose = do_transform_pose(msg.pose, lookup_transform)

@@ -241,7 +241,7 @@ class SpacecraftVSModel:
         f_expl = cs.vertcat(
             v,
             a_thrust,
-            1 / 2 * cs.mtimes(skew_symmetric(w), q),
+            1 / 2 * skew_symmetric(w) @  q,
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
             _get_feature_dynamics(L, v, w)
         )
