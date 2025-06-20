@@ -51,7 +51,29 @@ class SpacecraftVSMPC:
             x0
             if x0 is not None
             else np.array(
-                [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    100,
+                    100,
+                    400,
+                    100,
+                    100,
+                    300,
+                    400,
+                    300,
+                ]
             )
         )
 
@@ -139,16 +161,15 @@ class SpacecraftVSMPC:
 
         x = ocp.model.x
         u = ocp.model.u
-        
-        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
 
-        
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
+
+        # calc quaternion error
+        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
         # x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10]) ** 2)
         x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
 
-        # x_error = cs.vertcat(x_error, 2*(q_ref))
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
@@ -163,8 +184,6 @@ class SpacecraftVSMPC:
         Z = ocp.model.p[3:7]
         w_p = ocp.model.p[7]
 
-        x0 = np.concatenate((x0, np.zeros(8)))
-
         ocp = self.set_bearing_constraints(ocp, x0)
 
         ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z)
@@ -174,11 +193,13 @@ class SpacecraftVSMPC:
         )  # s0 = features state, Z = feature depth
 
         # set weights for the cost function
+        Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        Qp_q = 5e2  # Quaternion scalar part, 8e3
         Qp = np.diag(
             [
-                *[5e1] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+                *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
                 *[7e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                *[5e2] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
+                *[Qp_q] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
@@ -188,20 +209,25 @@ class SpacecraftVSMPC:
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
                 *[5e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[8e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[3e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
-        w_p = 1
+        
+        w_p, w_s = self.define_lyapunov_weight(
+            x_error, Qp_p, Qp_q, Qs, model.f_expl_expr
+        )
 
-        Q = w_p * Qp + (1 - w_p) * Qs
+        # w_p = 0  # 0 For full IBVS
+
+        Q = w_p * Qp + w_s * Qs
 
         S = np.diag(
             [
-                *[5e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+                *[9e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
             ]
         )
-        S = (1 - w_p) * S
+        S = w_s * S
 
         Q_e = 20 * Q
         S_e = 50 * S
@@ -215,8 +241,7 @@ class SpacecraftVSMPC:
         )
 
         ocp.model.cost_expr_ext_cost_e = (
-            x_error[:12].T @ Q_e @ x_error[:12]
-            + x_error[12:].T @ S_e @ x_error[12:]
+            x_error[:12].T @ Q_e @ x_error[:12] + x_error[12:].T @ S_e @ x_error[12:]
         )
 
         ocp.parameter_values = p_0
@@ -261,9 +286,32 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
+    def define_lyapunov_weight(self, x_err, Qp_p, Qp_q, Qs, f_expl):
+        e_p = x_err[0:3]  # PBVS error
+        e_p = cs.vertcat(
+            e_p, x_err[6:9]
+        )  # PBVS error with quaternion error (vector part)
+        e_s = x_err[6:12]  # IBVS error
+        k = 10.0  # how sharp the softmax is
+        Qp_V = np.diag(*[Qp_p] * 3, [Qp_q] * 3)  # PBVS Qp matrix
+
+        Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
+        Vs = 0.5 * cs.mtimes([e_s.T, Qs, e_s])
+        Vp_dot = cs.gradient(Vp, x_err) @ f_expl
+        Vs_dot = cs.gradient(Vs, x_err) @ f_expl
+
+        # softmax weights
+        wp = cs.exp(k * cs.fabs(Vp_dot))
+        ws = cs.exp(k * cs.fabs(Vs_dot))
+        wp = wp / (wp + ws)
+        ws = 1 - wp
+        return wp, ws
+
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = 2e3 if servoing_enabled else 0  # 2e3, TODO: set to 0 for no slack
+        self.w_slack = (
+            2e3 if servoing_enabled else 0
+        )  # 2e3, TODO: set to 0 for no slack
 
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None):
 
@@ -279,7 +327,6 @@ class SpacecraftVSMPC:
         # q_err = quat_error(x0[6:10], ref[6:10,0])  # Quaternion error
         # # print the quaternion error for debugging
         # print(f"Quaternion error: {q_err}")
-
 
         p_obj = p_obj if p_obj is not None else self.p_obj0
         Z = Z if Z is not None else self.Z0

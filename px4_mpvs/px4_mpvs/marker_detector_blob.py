@@ -122,7 +122,7 @@ class CircleFeatureDetector:
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
 
 
-        cv2.imshow("Morphology Mask", mask)
+        # cv2.imshow("Morphology Mask", mask)
 
         kp = self.detector.detect(mask)
         img_with_keypoints = cv2.drawKeypoints(

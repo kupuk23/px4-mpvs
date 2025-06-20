@@ -46,11 +46,14 @@ def calculate_orientation_error(q1, q2):
     q1 = q1 / np.linalg.norm(q1)
     q2 = q2 / np.linalg.norm(q2)
     
-    q2_inv = np.array([q2[0], -q2[1], -q2[2], -q2[3]])
-
-    q_diff = quaternion_multiply(q1, q2_inv)
+    # Calculate dot product directly - simpler approach
+    dot_product = np.abs(np.dot(q1, q2))  # Take absolute value for shortest path
     
-    angle = 2 * np.arccos(q_diff[0])  # angle in radians
+    # Clamp to avoid numerical issues with arccos
+    dot_product = np.clip(dot_product, 0.0, 1.0)
+    
+    
+    angle = 2 * np.arccos(dot_product)  # angle in radians
     # Handle the antipodal case (q and -q represent the same orientation)
     orientation_error_degrees = np.rad2deg(angle)
     

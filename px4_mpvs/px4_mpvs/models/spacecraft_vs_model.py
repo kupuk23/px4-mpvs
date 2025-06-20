@@ -39,7 +39,6 @@ from px4_mpvs.utils.math_utils import quat_mul_cs
 
 class SpacecraftVSModel:
     def __init__(self):
-        
 
         self.name = "spacecraft_mpavs_model"
 
@@ -52,8 +51,6 @@ class SpacecraftVSModel:
             ]
         )
         self.K = cs.DM(self.K)  # Convert to CasADi DM for compatibility
-
-            
 
         # constants
         self.mass = 16.8
@@ -138,10 +135,10 @@ class SpacecraftVSModel:
             # This is for the camera frame being reversed
             # q = [cos(θ/2), 0, 0, sin(θ/2)]
 
-            quat_rot_z = cs.DM([0,0,0,1])  # Quaternion representing 180 degrees rotation around z-axis
-            q_rotated = quat_mul_cs(q,quat_rot_z)
-
-
+            quat_rot_z = cs.DM(
+                [0, 0, 0, 1]
+            )  # Quaternion representing 180 degrees rotation around z-axis
+            q_rotated = quat_mul_cs(q, quat_rot_z)
 
             r_I = p_obj - p  # Vector from robot to object in inertial frame
 
@@ -165,26 +162,28 @@ class SpacecraftVSModel:
             # transform twist from base to camera frame
             # w_cam = Rbc*w_base
             # v_cam = Rbc*(v_base + w_base x r_bc)
-            # no rotation in the camera frame, Rbc = I
-            r_bc = cs.DM([0.09, 0.0, 0.51])  # camera translation from base frame
-            v_cam = v - cs.cross(w, r_bc)
-            w_cam = w
-            v_standard = cs.vertcat(
-            -v_cam[1],  # X_std = -Y_your (right = -left)
-            -v_cam[2],  # Y_std = -Z_your (down = -up)
-             v_cam[0]   # Z_std = X_your (forward = forward)
-        )
-        
-            w_standard = cs.vertcat(
-                -w_cam[1],  # Roll around X_std = -pitch around Y_your
-                -w_cam[2],  # Pitch around Y_std = -yaw around Z_your  
-                w_cam[0]   # Yaw around Z_std = roll around X_your
+            # rotate the camera frame 180 degrees around the z-axis
+            Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]) #TODO: FIX ROTATION
+            r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
+
+            v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
+            w_cam = cs.mtimes(Rbc,w)
+            v_image = cs.vertcat(
+                v_cam[1],  # X_image = -Y_cam (right = -left)
+                -v_cam[2],  # Y_image = -Z_cam (down = -up)
+                -v_cam[0],  # Z_image = X_cam (forward = forward)
             )
-            twist = cs.vertcat(v_standard, w_standard)  # 6x1
+
+            w_image = cs.vertcat(
+                w_cam[1],  # Roll around X_image = -pitch around Y_cam
+                -w_cam[2],  # Pitch around Y_image = -yaw around Z_cam
+                -w_cam[0],  # Yaw around Z_image = roll around X_cam
+            )
+            twist = cs.vertcat(v_image, w_image)  # 6x1
             s_dot_vec = cs.mtimes(L, twist)  # 8x1
             # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
             return s_dot_vec
-        
+
         # set up states & controls
         p = cs.MX.sym("p", 3)
         v = cs.MX.sym("v", 3)
@@ -196,12 +195,11 @@ class SpacecraftVSModel:
         Z = cs.MX.sym("Z", 4)
         p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
         w_p = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
-        
 
         x = cs.vertcat(p, v, q, w, s)
 
         # compute bearing inequality
-        
+
         g_x = define_visual_constraint(p_obj, p, q)
 
         # Define nonlinear constraint
@@ -209,11 +207,10 @@ class SpacecraftVSModel:
         model.con_h_expr_e = g_x
 
         # Add model parameters
-        model_params = cs.vertcat(p_obj, Z, w_p)  # 
+        model_params = cs.vertcat(p_obj, Z, w_p)  #
 
         # Define the image dynamics
         L = self._get_interaction_matrix(s, Z)
-        
 
         u = cs.MX.sym("u", 4)
         D_mat = cs.MX.zeros(2, 4)
@@ -251,11 +248,10 @@ class SpacecraftVSModel:
         f_expl = cs.vertcat(
             v,
             a_thrust,
-            1 / 2 * skew_symmetric(w) @  q,
+            1 / 2 * skew_symmetric(w) @ q,
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
-            _get_feature_dynamics(L, v, w)
+            _get_feature_dynamics(L, v, w),
         )
-
 
         f_impl = xdot - f_expl
 
@@ -264,7 +260,7 @@ class SpacecraftVSModel:
         model.x = x
         model.xdot = xdot
         model.u = u
-        model.p = model_params 
+        model.p = model_params
         model.name = self.name
 
         return model

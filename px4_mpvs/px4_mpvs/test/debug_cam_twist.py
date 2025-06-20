@@ -65,9 +65,6 @@ from px4_msgs.msg import VehicleTorqueSetpoint
 from px4_msgs.msg import VehicleThrustSetpoint
 from vs_msgs.msg import ServoPoses
 
-from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
-from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
-
 
 from std_srvs.srv import SetBool
 from mpc_msgs.srv import SetPose
@@ -77,10 +74,10 @@ from vs_msgs.srv import SetHomePose
 from px4_mpvs.hybrid_control import handle_hybrid_control
 
 
-class SpacecraftIBMPVS(Node):
+class TestTwist(Node):
 
     def __init__(self):
-        super().__init__("spacecraft_mpvs")
+        super().__init__("debug_cam_twist")
 
         self.aligning_threshold = 0.2
 
@@ -153,11 +150,8 @@ class SpacecraftIBMPVS(Node):
         self.recorded_p_error = np.zeros(3)  # for recording position error
 
         self.aligning = False
-        self.aligned = False  # flag to check if the robot is aligned
         self.markers_detected = False
         self.pre_docked = False
-        self.model = SpacecraftVSModel()
-        self.mpc = SpacecraftVSMPC(self.model)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -199,12 +193,6 @@ class SpacecraftIBMPVS(Node):
             f"{self.namespace_prefix}/fmu/out/vehicle_local_position",
             self.vehicle_local_position_callback,
             qos_profile_sub,
-        )
-
-        self.set_servo_srv = self.create_service(
-            SetHomePose,
-            f"{self.namespace_prefix}/set_servo_pose",
-            self.servo_srv_callback,
         )
 
         if self.setpoint_from_rviz:
@@ -357,7 +345,23 @@ class SpacecraftIBMPVS(Node):
         return
 
     def cmdloop_callback(self):
-        handle_hybrid_control(self)
+        self.check_cam_twist()
+
+    def check_cam_twist(self):
+        Rbc = np.diag([-1.0, -1.0, 1.0])
+        r_bc = np.array([-0.09, 0.0, 0.51])  # camera translation from base frame
+        v_cam = Rbc @ (
+            self.vehicle_local_velocity + np.cross(self.vehicle_angular_velocity, r_bc)
+        )
+        w_cam = Rbc @ self.vehicle_angular_velocity
+        # print the camera velocity for debugging
+        print("base velocity: [{:.2f}, {:.2f}, {:.2f}]".format(
+            *self.vehicle_local_velocity))
+
+        print(
+            "Camera velocity: [{:.2f}, {:.2f}, {:.2f}]".format(*v_cam),
+            "Camera angular velocity: [{:.2f}, {:.2f}, {:.2f}]".format(*w_cam),
+        )
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)
@@ -392,32 +396,15 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude[2] = msg.pose.orientation.y
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
-    def servo_srv_callback(self, request: SetHomePose, response: SetHomePose.Response):
-        if request.align_mode:
-            self.update_setpoint(request)
-            self.aligning = True
-            self.get_logger().info("Starting homing mode")
-        else:
-            self.aligned = request.aligned
-            self.aligning = False
-            self.get_logger().info("Stopping homing mode")
-
-        if np.any(self.p_obj):
-            self.mpc.update_constraints(self.aligning)
-            self.p_obj = (
-                np.array([0, 0, 0]) if not self.aligning else self.p_obj
-            )  # reset p_obj if not aligning
-        return response
-
 
 def main(args=None):
     rclpy.init(args=args)
 
-    spacecraft_mpvs = SpacecraftIBMPVS()
+    twist_test = TestTwist()
 
-    rclpy.spin(spacecraft_mpvs)
+    rclpy.spin(twist_test)
 
-    spacecraft_mpvs.destroy_node()
+    twist_test.destroy_node()
     rclpy.shutdown()
 
 

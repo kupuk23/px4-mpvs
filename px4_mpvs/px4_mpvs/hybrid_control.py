@@ -64,13 +64,15 @@ def handle_hybrid_control(node):
     ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
 
     # Solve MPC
-    if not node.aligning:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref)
-    elif np.any(node.p_obj):
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj)
-    else:
-        return
     
+    if not node.aligned and not node.pre_docked:
+        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z)
+    elif node.aligned:
+        # change hybrid flag to True
+        # node.mpc.setHybrid(True)
+        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z, hybrid=True) # TODO: add hybrid flag to use dynamic weight
+
+
     # check if aligning is finished and robot is stable
     if node.aligning:
         # compare ref error with robot pose
@@ -81,6 +83,17 @@ def handle_hybrid_control(node):
             )
             node.aligning = False
             node.p_obj = np.array([0.0, 0.0, 0.0])
+            node.aligned = True
+
+    
+
+            
+
+    if node.pre_docked:
+        u_pred = np.zeros((node.mpc.N + 1, 4))
+        u_pred[:, 0] = 0.05
+        u_pred[:, 1] = 0.05
+        x_pred = x0.reshape(1, -1).repeat(node.mpc.N + 1, axis=0)
 
     # Colect data
     idx = 0
