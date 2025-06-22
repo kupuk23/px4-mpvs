@@ -1,3 +1,6 @@
 .vscode/
 c_generated_code/
-px4_mpvs/px4_mpvs/*.pyc
+px4_mpvs/px4_mpvs/controllers/__pycache__/
+px4_mpvs/px4_mpvs/models/__pycache__/
+px4_mpvs/px4_mpvs/test/__pycache__/
+px4_mpvs/px4_mpvs/utils/__pycache__/
