@@ -159,7 +159,7 @@ class CircleFeatureDetector:
         if len(circle_centers) < 4:
             if self.debug:
                 print(f"Not enough circles detected: {len(circle_centers)}")
-            return None
+            return None, img
 
         # If more than 4 circles, match with target points
         matched_centers = self._match_circles(circle_centers, self.target_points)
@@ -174,6 +174,8 @@ class CircleFeatureDetector:
         ordered_centers = np.array(ordered_centers, dtype=np.int16)
 
         viz_img = img.copy()
+
+        
 
         # Draw circles and IDs
         for i, center in enumerate(ordered_centers):

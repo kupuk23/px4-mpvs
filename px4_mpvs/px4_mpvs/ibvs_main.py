@@ -153,40 +153,6 @@ class MarkerDetectorNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error processing image: {str(e)}")
 
-    def display_visualization(self, image):
-        """Display visualization of the IBVS controller."""
-        # Create a copy for visualization
-        viz_img = image.copy()
-
-        # Draw the current points
-        for i, point in enumerate(self.marker_pos):
-            cv2.circle(viz_img, (int(point[0]), int(point[1])), 5, (0, 255, 0), -1)
-            cv2.putText(
-                viz_img,
-                f"{i+1}",
-                (int(point[0]) + 10, int(point[1]) + 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                2,
-            )
-
-        # Show error information
-        # error = np.linalg.norm(self.marker_pos.flatten() - self.p_desired.flatten())
-        # cv2.putText(
-        #     viz_img,
-        #     f"Error: {error:.2f} px",
-        #     (20, 30),
-        #     cv2.FONT_HERSHEY_SIMPLEX,
-        #     0.7,
-        #     (255, 0, 0),
-        #     2,
-        # )
-
-        # Display the image
-        cv2.imshow(self.window_name, viz_img)
-        # cv2.imshow("depth image",self.depth_image)
-        cv2.waitKey(1)
 
 
 def main(args=None):

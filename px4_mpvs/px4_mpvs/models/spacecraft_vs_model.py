@@ -40,6 +40,7 @@ from px4_mpvs.utils.math_utils import quat_mul_cs
 class SpacecraftVSModel:
     def __init__(self):
 
+
         self.name = "spacecraft_mpavs_model"
 
         # Camera intrinsic parameters
@@ -163,11 +164,11 @@ class SpacecraftVSModel:
             # w_cam = Rbc*w_base
             # v_cam = Rbc*(v_base + w_base x r_bc)
             # rotate the camera frame 180 degrees around the z-axis
-            Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]) #TODO: FIX ROTATION
+            Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])  # TODO: FIX ROTATION
             r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
 
             v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
-            w_cam = cs.mtimes(Rbc,w)
+            w_cam = cs.mtimes(Rbc, w)
             v_image = cs.vertcat(
                 v_cam[1],  # X_image = -Y_cam (right = -left)
                 -v_cam[2],  # Y_image = -Z_cam (down = -up)
@@ -194,7 +195,7 @@ class SpacecraftVSModel:
         # Setup external parameters
         Z = cs.MX.sym("Z", 4)
         p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
-        w_p = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
+        hybrid_mode = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
 
         x = cs.vertcat(p, v, q, w, s)
 
@@ -207,7 +208,7 @@ class SpacecraftVSModel:
         model.con_h_expr_e = g_x
 
         # Add model parameters
-        model_params = cs.vertcat(p_obj, Z, w_p)  #
+        model_params = cs.vertcat(p_obj, Z, hybrid_mode)  #
 
         # Define the image dynamics
         L = self._get_interaction_matrix(s, Z)

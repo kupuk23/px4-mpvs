@@ -38,10 +38,10 @@ import time
 from px4_mpvs.utils.math_utils import quat_error
 
 
-class SpacecraftVSMPC:
+class SpacecraftVSMPC: 
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False # Set to False after the first run to avoid rebuilding
         self.vel_limit = 0.5  # np.inf .1
         self.model = model
         self.Tf = 5.0
@@ -87,7 +87,7 @@ class SpacecraftVSMPC:
         self.s_max = 640 - 10  # 640x480 image
 
         self.Z0 = Z if Z is not None else np.array([1.0] * 4)
-        self.w_hybrid = 0.0  # 0 for pure PBVS, 1 for hybrid control
+        self.hybrid_mode = 0.0
 
         self.ocp_solver, self.integrator = self.setup(
             self.x0, self.N, self.Tf, self.p_obj0, Z0=self.Z0, w_hybrid0=self.w_hybrid
@@ -168,10 +168,7 @@ class SpacecraftVSMPC:
 
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-
-        # calc quaternion error
-        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
-
+        # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2)/2)
         x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
 
         # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2) / 2)
@@ -188,15 +185,22 @@ class SpacecraftVSMPC:
         # Initialize parameters
         p_obj = ocp.model.p[0:3]
         Z = ocp.model.p[3:7]
-        w_hybrid = ocp.model.p[7]
+        hybrid_mode = ocp.model.p[7]
+
+
+
 
         ocp = self.set_bearing_constraints(ocp, x0)
 
-        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, w_hybrid)
+        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, hybrid_mode)
 
         p_0 = np.concatenate(
-            (x0, np.zeros(nu), p_obj0, Z0, [w_hybrid0])
+            (x0, np.zeros(nu), p_obj0, Z0, [self.hybrid_mode])
         )  # s0 = features state, Z = feature depth
+
+        Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        Qp_q = 7e2  # Quaternion scalar part, 8e3
+        
 
         # set weights for the cost function
         Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
@@ -211,10 +215,10 @@ class SpacecraftVSMPC:
         Qp = np.diag(
             [
                 *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[5e1] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[7e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # Qp_q,
                 *[Qp_q] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[5e1] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
@@ -228,20 +232,21 @@ class SpacecraftVSMPC:
             ]
         )
 
-        w_p = 1.0
-        w_s = 1 - w_p
-        # w_p, w_s , V_dot= self.define_lyapunov_weight(
-        #     x, x_ref, Qp_p, Qp_q, S, model.f_expl_expr
+        # w_p, w_s = self.define_lyapunov_weight(
+        #     x_error, Qp_p, Qp_q, Qs, model.f_expl_expr
         # )
+
+        w_p = cs.if_else(hybrid_mode > 0.5, 0.0, 1.0)  
 
         # w_p = cs.if_else(w_hybrid, w_p, 1.0)
         # w_s = cs.if_else(w_hybrid, w_s, 0.0)
 
-        # w_p = 0  # 0 For full IBVS
-
-        Q = w_p * Qp + w_s * Qs
-
-        S = w_s * S
+        S = np.diag(
+            [
+                *[9e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+            ]
+        )
+        S = (1 - w_p) * S
 
         Q_e = 20 * Q
         S_e = 50 * S
@@ -255,7 +260,8 @@ class SpacecraftVSMPC:
         # )
 
         # ocp.model.cost_expr_ext_cost_e = (
-        #     x_error[:10].T @ Q_e @ x_error[:10] + x_error[10:].T @ S_e @ x_error[10:]
+        #     x_error[:10].T @ Q_e @ x_error[:10]
+        #     + x_error[10:].T @ S_e @ x_error[10:]
         # )
 
         ocp.model.cost_expr_ext_cost = (
@@ -309,6 +315,27 @@ class SpacecraftVSMPC:
         )
 
         return ocp_solver, acados_integrator
+    
+    def define_lyapunov_weight(self, x_err, Qp_p, Qp_q, Qs, f_expl):
+        e_p = x_err[0:3]  # PBVS error
+        e_p = cs.vertcat(
+            e_p, x_err[6:9]
+        )  # PBVS error with quaternion error (vector part)
+        e_s = x_err[6:10]  # IBVS error
+        k = 10.0  # how sharp the softmax is
+        Qp_V = np.diag(*[Qp_p] * 3, [Qp_q] * 3)  # PBVS Qp matrix
+
+        Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
+        Vs = 0.5 * cs.mtimes([e_s.T, Qs, e_s])
+        Vp_dot = cs.gradient(Vp, x_err) @ f_expl
+        Vs_dot = cs.gradient(Vs, x_err) @ f_expl
+
+        # softmax weights
+        wp = cs.exp(k * cs.fabs(Vp_dot))
+        ws = cs.exp(k * cs.fabs(Vs_dot))
+        wp = wp / (wp + ws)
+        ws = 1 - wp
+        return wp, ws
 
     def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, Qs, f_expl):
         x_err = x[0:3] - x_ref[0:3]  # Position error
@@ -347,7 +374,7 @@ class SpacecraftVSMPC:
             2e3 if servoing_enabled else 0
         )  # 2e3, TODO: set to 0 for no slack
 
-    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid=None):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=None):
 
         # Set reference, create zero reference
         if ref is None:
@@ -364,7 +391,7 @@ class SpacecraftVSMPC:
 
         p_obj = p_obj if p_obj is not None else self.p_obj0
         Z = Z if Z is not None else self.Z0
-        hybrid = hybrid if hybrid is not None else self.w_hybrid
+        hybrid_mode = hybrid_mode if hybrid_mode is not None else self.hybrid_mode
 
         # preparation phase
         ocp_solver = self.ocp_solver
@@ -377,10 +404,10 @@ class SpacecraftVSMPC:
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], p_obj, Z, [hybrid]])
+                p_i = np.concatenate([ref[:, i], p_obj, Z, [hybrid_mode]])
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, p_obj, Z, [hybrid]])
+                p_i = np.concatenate([zero_ref, p_obj, Z, [hybrid_mode]])
             ocp_solver.set(i, "p", p_i)
 
         # set initial state

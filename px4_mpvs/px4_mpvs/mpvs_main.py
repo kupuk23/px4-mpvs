@@ -144,11 +144,9 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
         self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis
 
-        self.p_obj = np.array([0.0, 0.0, 0.0])  # object position in map
-        self.p_markers = np.array(
-            [100, 100, 400, 100, 100, 300, 400, 300]
-        )  # flattened 2d coordinates of the detected markers
-        self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # z coordinates of the detected markers
+        self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
+        self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
+        self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
         self.recorded_markers = np.zeros(8)  # for recording markers
         self.recorded_p_error = np.zeros(3)  # for recording position error
 
@@ -156,6 +154,7 @@ class SpacecraftIBMPVS(Node):
         self.aligned = False  # flag to check if the robot is aligned
         self.markers_detected = False
         self.pre_docked = False
+        self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model)
 
@@ -400,13 +399,10 @@ class SpacecraftIBMPVS(Node):
         else:
             self.aligned = request.aligned
             self.aligning = False
-            self.get_logger().info("Stopping homing mode")
+            self.p_obj = np.array([-100.0, 0, 0])
+            self.get_logger().info("Robot is aligned, stopping homing mode")
+        self.mpc.update_constraints(self.aligning)
 
-        if np.any(self.p_obj):
-            self.mpc.update_constraints(self.aligning)
-            self.p_obj = (
-                np.array([0, 0, 0]) if not self.aligning else self.p_obj
-            )  # reset p_obj if not aligning
         return response
 
 

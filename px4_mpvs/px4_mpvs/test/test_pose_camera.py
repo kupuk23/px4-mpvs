@@ -94,7 +94,7 @@ class VisualServo(Node):
 
         # State variable for docking
         self.success_start_time = None
-        self.success_duration_required = 2.0  # seconds
+        self.success_duration_required = 4.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
         self.x_offset = 0.7
@@ -169,6 +169,7 @@ class VisualServo(Node):
 
             self.goal_pub.publish(msg)
 
+            # make  goal posestamped object and publish to the topic
             goal_posestamped = map_goal_pose
             self.goal_posestamped_pub.publish(goal_posestamped)
 
@@ -177,7 +178,7 @@ class VisualServo(Node):
             #     self.reset_all_variables()
 
     def check_docking_status(self):
-        # Check if the `ro`bot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
+        # Check if the robot is already arrived at the goal pose by comparing self.consistent_goal with robot pose
         goal_position = np.array(
             [
                 self.last_consistent_goal_pose.position.x,
@@ -194,20 +195,17 @@ class VisualServo(Node):
                 self.last_consistent_goal_pose.orientation.w,
                 self.last_consistent_goal_pose.orientation.x,
                 self.last_consistent_goal_pose.orientation.y,
-                
                 self.last_consistent_goal_pose.orientation.z,
             ]
         )
-
-        
 
         orientation_err = math_utils.calculate_orientation_error(
             self.vehicle_attitude, goal_orientation
         )
 
         print(f"position error: {position_err:.2f} m")
-        print(f"orientation error: {orientation_err:.2f} degrees") 
-        
+        print(f"orientation error: {orientation_err:.2f} degrees") #TODO: FIX THIS BECAUSE REVERSED CAMERA
+
         # Check if we're within thresholds
         if (
             position_err < self.position_threshold
