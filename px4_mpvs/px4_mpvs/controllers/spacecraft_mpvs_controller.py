@@ -90,7 +90,7 @@ class SpacecraftVSMPC:
         self.hybrid_mode = 0.0
 
         self.ocp_solver, self.integrator = self.setup(
-            self.x0, self.N, self.Tf, self.p_obj0, Z0=self.Z0, w_hybrid0=self.w_hybrid
+            self.x0, self.N, self.Tf, self.p_obj0, Z0=self.Z0
         )
 
     def set_bearing_constraints(self, ocp, x0):
@@ -127,15 +127,15 @@ class SpacecraftVSMPC:
         ocp.constraints.x0 = x0
 
         # set bounds for velocity
-        # ocp.constraints.idxbx = np.array(
-        #     [3, 4, 5, 10, 11, 12]
-        # )  # vx, vy, vz, ωx, ωy, ωz
-        # ocp.constraints.lbx = np.array([-self.vel_limit] * 6)
-        # ocp.constraints.ubx = np.array([self.vel_limit] * 6)
+        ocp.constraints.idxbx = np.array(
+            [3, 4, 5, 10, 11, 12]
+        )  # vx, vy, vz, ωx, ωy, ωz
+        ocp.constraints.lbx = np.array([-self.vel_limit] * 6)
+        ocp.constraints.ubx = np.array([self.vel_limit] * 6)
 
         return ocp
 
-    def setup(self, x0, N_horizon, Tf, p_obj0, Z0, w_hybrid0):
+    def setup(self, x0, N_horizon, Tf, p_obj0, Z0):
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
 
@@ -155,9 +155,6 @@ class SpacecraftVSMPC:
         # References:
         x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 robot states + 8 features states
         u_ref = cs.MX.sym("u_ref", (nu, 1))
-        x_error = cs.MX.sym(
-            "x_error", (nx - 1, 1)
-        )  # 13 robot states + 8 features states
 
         # Calculate errors
         # x : p,v,q,w               , R9 x SO(3)
@@ -165,14 +162,16 @@ class SpacecraftVSMPC:
 
         x = ocp.model.x
         u = ocp.model.u
+        
+        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
 
+        
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
         # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2)/2)
         x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
 
-        # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2) / 2)
-
+        # x_error = cs.vertcat(x_error, 2*(q_ref))
         x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
         x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
 
@@ -203,15 +202,6 @@ class SpacecraftVSMPC:
         
 
         # set weights for the cost function
-        Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        Qp_q = 5e2  # Quaternion scalar part, 8e3 default, 5e2 for new quat error metric
-
-        S = np.diag(
-            [
-                *[9e-3] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
-            ]
-        )
-
         Qp = np.diag(
             [
                 *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
@@ -238,8 +228,7 @@ class SpacecraftVSMPC:
 
         w_p = cs.if_else(hybrid_mode > 0.5, 0.0, 1.0)  
 
-        # w_p = cs.if_else(w_hybrid, w_p, 1.0)
-        # w_s = cs.if_else(w_hybrid, w_s, 0.0)
+        Q = w_p * Qp + (1 - w_p) * Qs
 
         S = np.diag(
             [
@@ -271,7 +260,8 @@ class SpacecraftVSMPC:
         )
 
         ocp.model.cost_expr_ext_cost_e = (
-            x_error[:12].T @ Q_e @ x_error[:12] + x_error[12:].T @ S_e @ x_error[12:]
+            x_error[:12].T @ Q_e @ x_error[:12]
+            + x_error[12:].T @ S_e @ x_error[12:]
         )
 
         ocp.parameter_values = p_0
@@ -337,42 +327,9 @@ class SpacecraftVSMPC:
         ws = 1 - wp
         return wp, ws
 
-    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, Qs, f_expl):
-        x_err = x[0:3] - x_ref[0:3]  # Position error
-        x_err = cs.vertcat(x_err, quat_error(x[6:10], x_ref[6:10]))  # Quaternion error
-        e_p = x_err
-
-        e_s = x[12:] - x_ref[12:]
-        k = 10.0  # how sharp the softmax is
-        Qp_V = np.diag(*[Qp_p] * 3, [Qp_q] * 3)  # PBVS Qp matrix
-
-        Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
-        Vs = 0.5 * cs.mtimes([e_s.T, Qs, e_s])
-        Vp_dot = cs.gradient(Vp, x_err) @ f_expl
-        Vs_dot = cs.gradient(Vs, x_err) @ f_expl
-
-        # softmax weights
-        wp = cs.exp(k * cs.fabs(Vp_dot))
-        ws = cs.exp(k * cs.fabs(Vs_dot))
-        wp = wp / (wp + ws)
-        ws = 1 - wp
-
-        V_dot = Vp_dot + Vs_dot
-
-        self.lyapunov_eval = cs.Function(
-            "lyapunov_eval",
-            [x, x_ref],
-            [Vp, Vs, Vp_dot, Vs_dot, V_dot, wp, ws],
-            ["state", "reference"],
-            ["Vp", "Vs", "Vp_dot", "Vs_dot", "V_dot", "wp", "ws"],
-        )
-        return wp, ws, V_dot
-
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
-        self.w_slack = (
-            2e3 if servoing_enabled else 0
-        )  # 2e3, TODO: set to 0 for no slack
+        self.w_slack = 2e3 if servoing_enabled else 0  # 2e3, TODO: set to 0 for no slack
 
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=None):
 
@@ -388,6 +345,7 @@ class SpacecraftVSMPC:
         # q_err = quat_error(x0[6:10], ref[6:10,0])  # Quaternion error
         # # print the quaternion error for debugging
         # print(f"Quaternion error: {q_err}")
+
 
         p_obj = p_obj if p_obj is not None else self.p_obj0
         Z = Z if Z is not None else self.Z0
@@ -415,17 +373,8 @@ class SpacecraftVSMPC:
         ocp_solver.set(0, "ubx", x0.flatten())
 
         status = ocp_solver.solve()
-        if verbose and hasattr(self, "lyapunov_eval"):
-            # Evaluate the Lyapunov function and its derivatives
-            Vp, Vs, Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
-                ocp_solver.get(0, "x"), ref[:, 0]
-            )
-            print(f"===== Lyapunov Values =====")
-            print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-            print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
-            print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
-
-            # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
+        if verbose:
+            self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
         if status != 0:
             raise Exception(f"acados returned status {status}.")
 
