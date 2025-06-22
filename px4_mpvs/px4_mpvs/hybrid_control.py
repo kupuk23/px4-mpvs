@@ -64,29 +64,27 @@ def handle_hybrid_control(node):
     ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
 
     # Solve MPC
-    if not node.aligned and not node.pre_docked:
+    if not node.aligned:
         u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z)
-    elif node.aligned:
+    elif node.aligned and not node.pre_docked:
         u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj, Z = node.Z, hybrid_mode=1.0) # TODO: add hybrid flag to use dynamic weight
-    else:
-        return
-    
-    # check if aligning is finished and robot is stable
-    # if node.aligning:
-    #     # compare ref error with robot pose
-    #     pos_err = math_utils.calc_position_error(node.vehicle_local_position, node.setpoint_position)
-    #     if pos_err < node.aligning_threshold:
-    #         node.get_logger().info(
-    #             f"Aligning finished, position error: {pos_err:.2f} m"
-    #         )
-    #         node.aligning = False
-    #         node.p_obj = np.array([0.0, 0.0, 0.0])
-    #         node.aligned = True
+        
+        # debug reference and current image state
+        feature_current = x0[13:21].flatten()  # Current features
+        feature_desired = ref[13:21, 0].flatten()  # Desired features
+        error = np.linalg.norm(feature_current - feature_desired)
+        # print(f"Feature current: {feature_current}")
+        # print(f"Feature desired: {feature_desired}")
+        print(f"Feature errors: {error}")
 
+        if error < 10:
+            print("Features are close enough, stopping servoing")
+            node.pre_docked = True
+    
     if node.pre_docked:
         u_pred = np.zeros((node.mpc.N + 1, 4))
-        u_pred[:, 0] = 0.05
-        u_pred[:, 1] = 0.05
+        u_pred[:, 0] = -0.05
+        u_pred[:, 1] = -0.05
         x_pred = x0.reshape(1, -1).repeat(node.mpc.N + 1, axis=0)
 
     # Colect data
