@@ -1,2 +1,3 @@
 .vscode/
 c_generated_code/
+px4_mpvs/px4_mpvs/*.pyc
