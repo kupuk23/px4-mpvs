@@ -45,7 +45,7 @@ def handle_hybrid_control(node):
             node.vehicle_angular_velocity[0],
             node.vehicle_angular_velocity[1],
             node.vehicle_angular_velocity[2],
-            *p_markers
+            *p_markers,
         ]
     ).reshape(21, 1)
 
@@ -64,19 +64,28 @@ def handle_hybrid_control(node):
     ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
 
     # Solve MPC
-    
+
     if not node.aligned and not node.pre_docked:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z)
-    elif node.aligned:
+        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj, Z=node.Z)
+    elif node.aligned and not node.pre_docked:
         # change hybrid flag to True
         # node.mpc.setHybrid(True)
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z, hybrid=True) # TODO: add hybrid flag to use dynamic weight
-
+        u_pred, x_pred = node.mpc.solve(
+            x0, ref=ref, p_obj=node.p_obj, Z=node.Z, pbvs=1, ibvs=0
+        )  # TODO: add hybrid flag to use dynamic weight
+    elif node.aligned and node.pre_docked:
+        # change hybrid flag to True
+        # node.mpc.setHybrid(True)
+        u_pred, x_pred = node.mpc.solve(
+            x0, ref=ref, p_obj=node.p_obj, Z=node.Z, pbvs = 0, ibvs=1
+        )
 
     # check if aligning is finished and robot is stable
     if node.aligning:
         # compare ref error with robot pose
-        pos_err = math_utils.calc_position_error(node.vehicle_local_position, node.setpoint_position)
+        pos_err = math_utils.calc_position_error(
+            node.vehicle_local_position, node.setpoint_position
+        )
         if pos_err < node.aligning_threshold:
             node.get_logger().info(
                 f"Aligning finished, position error: {pos_err:.2f} m"
@@ -84,10 +93,6 @@ def handle_hybrid_control(node):
             node.aligning = False
             node.p_obj = np.array([0.0, 0.0, 0.0])
             node.aligned = True
-
-    
-
-            
 
     if node.pre_docked:
         u_pred = np.zeros((node.mpc.N + 1, 4))
