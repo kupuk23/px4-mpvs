@@ -40,8 +40,7 @@ from px4_mpvs.utils.math_utils import quat_mul_cs
 class SpacecraftVSModel:
     def __init__(self):
 
-
-        self.name = "spacecraft_mpavs_model"
+        self.name = "spacecraft_mpvs_model"
 
         # Camera intrinsic parameters
         self.K = np.array(
@@ -63,7 +62,7 @@ class SpacecraftVSModel:
         # BEARING-ERROR variables
         self.theta_max_deg = 10
 
-    def _get_interaction_matrix(self, s: cs.MX, Z: cs.MX) -> cs.MX:
+    def get_interaction_matrix(self, s: cs.MX, Z: cs.MX) -> cs.MX:
         L = cs.MX.zeros(s.shape[0], 6)
 
         N = int(s.shape[0] / 2)
@@ -94,6 +93,7 @@ class SpacecraftVSModel:
         return L  # cs.MX((8,6))
 
     def get_acados_model(self) -> AcadosModel:
+
         def skew_symmetric(v):
             return cs.vertcat(
                 cs.horzcat(0, -v[0], -v[1], -v[2]),
@@ -211,7 +211,7 @@ class SpacecraftVSModel:
         model_params = cs.vertcat(p_obj, Z, hybrid_mode)  #
 
         # Define the image dynamics
-        L = self._get_interaction_matrix(s, Z)
+        L = self.get_interaction_matrix(s, Z)
 
         u = cs.MX.sym("u", 4)
         D_mat = cs.MX.zeros(2, 4)

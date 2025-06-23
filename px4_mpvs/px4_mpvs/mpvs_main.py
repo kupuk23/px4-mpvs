@@ -46,7 +46,7 @@ from rclpy.qos import (
     QoSDurabilityPolicy,
 )
 
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Int8
 from nav_msgs.msg import Path, Odometry
 from geometry_msgs.msg import PoseStamped
 from visualization_msgs.msg import Marker
@@ -157,7 +157,9 @@ class SpacecraftIBMPVS(Node):
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model)
-
+        self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
+        self.ibvs_e_threshold = 15
+        
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -169,6 +171,8 @@ class SpacecraftIBMPVS(Node):
         #     self.object_pose_callback,
         #     10
         # )
+
+        self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
 
         self.markers_sub = self.create_subscription(
             Float32MultiArray, "/detected_markers", self.marker_callback, 10
@@ -357,6 +361,10 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
         handle_hybrid_control(self)
+        
+        mode = Int8()
+        mode.data = self.mode
+        self.mode_pub.publish(mode)
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)
@@ -399,6 +407,7 @@ class SpacecraftIBMPVS(Node):
         else:
             self.aligned = request.aligned
             self.aligning = False
+            self.mode = 2 # TODO: IBVS mode for debug, later switch to 1 for hybrid
             self.p_obj = np.array([-100.0, 0, 0])
             self.get_logger().info("Robot is aligned, stopping homing mode")
         self.mpc.update_constraints(self.aligning)

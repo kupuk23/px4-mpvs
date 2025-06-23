@@ -77,7 +77,7 @@ def handle_hybrid_control(node):
         # print(f"Feature desired: {feature_desired}")
         print(f"Feature errors: {error}")
 
-        if error < 10:
+        if error < node.ibvs_e_threshold:
             print("Features are close enough, stopping servoing")
             node.pre_docked = True
     

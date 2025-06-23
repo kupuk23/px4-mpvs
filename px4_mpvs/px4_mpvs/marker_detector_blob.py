@@ -202,13 +202,6 @@ class CircleFeatureDetector:
             # )
 
         # Show final detected circles if visualization is enabled
-        if self.visualize:
-
-            # If we have reference visualization, show it side by side with current detection
-
-            cv2.imshow(self.window_name, viz_img)
-
-            cv2.waitKey(1)
 
         return ordered_centers, viz_img
 
@@ -298,64 +291,6 @@ class CircleFeatureDetector:
 
         return best_points
 
-    def detect_lines(self, image, lsd_parameters=None):
-        """
-        Detect lines in the input image using OpenCV's LineSegmentDetector
-
-        Args:
-            image: Input image
-            lsd_parameters: Parameters for LineSegmentDetector
-
-        Returns:
-            filtered_lines: Array of detected line segments
-        """
-        # Make a copy for visualization
-        viz_img = image.copy()
-        color = (0, 255, 0)
-        thickness = 2
-
-        # Convert to grayscale if the image is in color
-        if len(image.shape) == 3:
-            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = image
-
-        # Create LSD detector with custom parameters if provided
-        if lsd_parameters is None:
-            lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
-        else:
-            lsd = cv2.createLineSegmentDetector(**lsd_parameters)
-
-        # Detect lines
-        lines, width, prec, nfa = lsd.detect(gray)
-
-        # Filter lines if needed (e.g., by length, orientation, etc.)
-        filtered_lines = []
-        if lines is not None:
-            for line in lines:
-                x1, y1, x2, y2 = line[0]
-                length = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-
-                # Filter short lines and horizontal lines
-                if length > 10 and abs(x2 - x1) < abs(
-                    y2 - y1
-                ):  # Minimum length threshold abs(x2 - x1) < abs(y2 - y1)
-                    filtered_lines.append(line)
-
-                    # Draw lines on visualization image
-                    if self.visualize:
-                        cv2.line(
-                            viz_img,
-                            (int(x1), int(y1)),
-                            (int(x2), int(y2)),
-                            color,
-                            thickness,
-                        )
-
-        if self.visualize:
-            cv2.imshow("Line Detection", viz_img)
-
-        return np.array(filtered_lines) if filtered_lines else None
 
     def save_reference_visualization(self, output_path):
         """Save the reference visualization to disk."""
