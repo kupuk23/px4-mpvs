@@ -9,6 +9,7 @@ from nav_msgs.msg import Path, Odometry
 from px4_mpvs.utils import math_utils
 from time import perf_counter
 
+
 def handle_hybrid_control(node):
 
     # Publish odometry for SITL
@@ -67,13 +68,16 @@ def handle_hybrid_control(node):
     t_stop = perf_counter()
     # Solve MPC
     if not node.aligned:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z)
+        u_pred, x_pred = node.mpc.solve(
+            x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z
+        )
         t_stop = perf_counter()
     elif node.aligned and not node.pre_docked:
-        u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj, Z = node.Z, hybrid_mode=1.0) # TODO: add hybrid flag to use dynamic weight
+        u_pred, x_pred = node.mpc.solve(
+            x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
+        )  # TODO: add hybrid flag to use dynamic weight
         t_stop = perf_counter()
 
-        
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
         feature_desired = ref[13:21, 0].flatten()  # Desired features
@@ -85,9 +89,9 @@ def handle_hybrid_control(node):
         if error < node.ibvs_e_threshold:
             print("Features are close enough, stopping servoing")
             node.pre_docked = True
-    
+
     mpc_time = t_stop - t_start
-    node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
+    # node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
 
     if node.pre_docked:
         u_pred = np.zeros((node.mpc.N + 1, 4))

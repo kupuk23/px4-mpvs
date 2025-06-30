@@ -410,6 +410,14 @@ class SpacecraftIBMPVS(Node):
             self.mode = 2 # TODO: IBVS mode for debug, later switch to 1 for hybrid
             self.p_obj = np.array([-100.0, 0, 0])
             self.get_logger().info("Robot is aligned, stopping homing mode")
+            # update setpoint to be somewhere between the robot and object
+            self.setpoint_position = np.array(
+                [
+                    (self.vehicle_local_position[0] + self.p_obj[0]) / 2,
+                    (self.vehicle_local_position[1] + self.p_obj[1]) / 2,
+                    (self.vehicle_local_position[2] + self.p_obj[2]) / 2,
+                ]
+            )
         self.mpc.update_constraints(self.aligning)
 
         return response

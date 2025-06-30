@@ -119,6 +119,30 @@ class SpacecraftVSModel:
         s_dot_vec = cs.mtimes(L, twist)  # 8x1
         # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
         return s_dot_vec
+    
+
+    def build_interaction_mat_fun(self):
+        s_sym = cs.MX.sym("s_fun", 8)   # image-Jacobian
+        z_sym = cs.MX.sym("Z_fun", 4)      # linear twist
+        L_sym = self.get_interaction_matrix(s_sym, z_sym)
+
+        # Now hand it to CasADi
+        self.L_f = cs.Function("L_fun",
+                                      [s_sym, z_sym],
+                                      [L_sym],
+                                      ["s", "Z"], ["L"])
+        
+    def build_feature_dyn_fun(self):
+        L_sym = cs.MX.sym("L", 8, 6)   # image-Jacobian
+        v_sym = cs.MX.sym("v", 3)      # linear twist
+        w_sym = cs.MX.sym("w", 3)      # angular twist
+        s_dot_sym = self.get_feature_dynamics(L_sym, v_sym, w_sym)
+
+        # Now hand it to CasADi
+        self.feat_dyn_f = cs.Function("feat_dyn",
+                                      [L_sym, v_sym, w_sym],
+                                      [s_dot_sym],
+                                      ["L", "v", "w"], ["s_dot"])
 
     def get_acados_model(self) -> AcadosModel:
 
@@ -252,7 +276,7 @@ class SpacecraftVSModel:
             a_thrust,
             1 / 2 * skew_symmetric(w) @ q,
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
-            self.get_feature_dynamics(L, v, w),
+            self.get_feature_dynamics(L, v, w)
         )
 
         f_impl = xdot - f_expl

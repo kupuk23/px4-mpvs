@@ -42,7 +42,7 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 class SpacecraftVSMPC:
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.build = True  # Set to False after the first run to avoid rebuilding
         self.vel_limit = 0.8  # np.inf .1
         self.model = model
         self.Tf = 5.0
@@ -93,6 +93,8 @@ class SpacecraftVSMPC:
         self.ocp_solver, self.integrator = self.setup(
             self.x0, self.N, self.Tf, self.p_obj0, Z0=self.Z0
         )
+        self.model.build_feature_dyn_fun()
+        self.model.build_interaction_mat_fun()
 
     def set_bearing_constraints(self, ocp, x0):
         Fmax = self.model.max_thrust
@@ -139,7 +141,6 @@ class SpacecraftVSMPC:
     def setup(self, x0, N_horizon, Tf, p_obj0, Z0):
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
-        model_class = self.model
         # set model
         model = self.model.get_acados_model()
 
@@ -187,17 +188,12 @@ class SpacecraftVSMPC:
         hybrid_mode = ocp.model.p[7]
         s_dot_sym = ocp.model.p[8:]  # Feature dynamics
 
-        s = x[13:]  # Image features state
-        # L = model_class.get_interaction_matrix(s, Z)
-        # # Define the image dynamics
-        # s_dot = model_class.get_feature_dynamics(L, x[3:6], x[10:13])
-
         ocp = self.set_bearing_constraints(ocp, x0)
 
-        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, hybrid_mode)
+        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, hybrid_mode, s_dot_sym)
 
         p_0 = np.concatenate(
-            (x0, np.zeros(nu), p_obj0, Z0, [self.hybrid_mode])
+            (x0, np.zeros(nu), p_obj0, Z0, [self.hybrid_mode], np.zeros(8))
         )  # s0 = features state, Z = feature depth
 
         Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
@@ -211,7 +207,7 @@ class SpacecraftVSMPC:
                 *[1e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # Qp_q,
                 *[Qp_q] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[3e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[4e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
@@ -231,9 +227,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        # w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S, s_dot_sym)
+        w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S, s_dot_sym)
 
-        w_p = cs.if_else(hybrid_mode > 0.5, 0, 1.0)
+        w_p = cs.if_else(hybrid_mode > 0.5, w_p, 1.0) # change w_p to 0 for discrete switch testing
 
         Q = w_p * Qp + (1 - w_p) * Qs
 
@@ -332,10 +328,13 @@ class SpacecraftVSMPC:
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot_sym])
 
+        
+
         # softmax weights
         wp = cs.exp(k * cs.fabs(Vp_dot))
-        ws = cs.exp(k * cs.fabs(Vs_dot))
+        ws = cs.if_else(Vs_dot == 0, 0, cs.exp(k * cs.fabs(Vs_dot)))
         wp = wp / (wp + ws)
+        ws = 1 - wp 
 
         V_dot = Vp_dot + Vs_dot
 
@@ -373,11 +372,16 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
         hybrid_mode = hybrid_mode if hybrid_mode is not None else self.hybrid_mode
 
-        # if hybrid_mode:
-        #     L_val = self.model.get_interaction_matrix(x0[13:], Z)
-        #     s_dot = self.model.get_feature_dynamics(L_val, x0[3:6], x0[10:13])
-        # else:
-        #     s_dot = np.zeros(8)
+        L_val = self.model.L_f(x0[13:], Z)
+        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
+        s_dot = s_dot.full().flatten()  # Convert to numpy array
+        if hybrid_mode:
+            L_val = self.model.L_f(x0[13:], Z)
+            s_dot = self.model.feat_dyn_f( L_val, x0[3:6], x0[10:13])
+            s_dot = s_dot.full().flatten()  # Convert to numpy array
+            
+        else:
+            s_dot = np.zeros(8)
 
         # preparation phase
         ocp_solver = self.ocp_solver
@@ -390,10 +394,10 @@ class SpacecraftVSMPC:
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], p_obj, Z, [hybrid_mode]])
+                p_i = np.concatenate([ref[:, i], p_obj, Z, [hybrid_mode], s_dot])
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, p_obj, Z, [hybrid_mode]])
+                p_i = np.concatenate([zero_ref, p_obj, Z, [hybrid_mode], s_dot])
             ocp_solver.set(i, "p", p_i)
 
         # set initial state
@@ -402,15 +406,16 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
         if verbose and hasattr(self, "lyapunov_eval"):
-            pass
+            # pass
             # Evaluate the Lyapunov function and its derivatives
-            # Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
-            #     ocp_solver.get(0, "x"), ref[:, 0], s_dot_val
-            # )
-            # print(f"===== Lyapunov Values =====")
-            # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-            # print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
-            # print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
+            x_ref = ref[:-4, 0] if ref is not None else zero_ref [:-4, 0]
+            Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
+                ocp_solver.get(0, "x"), x_ref, s_dot
+            )
+            print(f"===== Lyapunov Values =====")
+            # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+            print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
+            print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
 
             # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
 
