@@ -7,7 +7,7 @@ from px4_msgs.msg import OffboardControlMode
 from nav_msgs.msg import Path, Odometry
 
 from px4_mpvs.utils import math_utils
-
+from time import perf_counter
 
 def handle_hybrid_control(node):
 
@@ -63,11 +63,16 @@ def handle_hybrid_control(node):
 
     ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
 
+    t_start = perf_counter()
+    t_stop = perf_counter()
     # Solve MPC
     if not node.aligned:
         u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj,Z = node.Z)
+        t_stop = perf_counter()
     elif node.aligned and not node.pre_docked:
         u_pred, x_pred = node.mpc.solve(x0, ref=ref, p_obj=node.p_obj, Z = node.Z, hybrid_mode=1.0) # TODO: add hybrid flag to use dynamic weight
+        t_stop = perf_counter()
+
         
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
@@ -81,6 +86,9 @@ def handle_hybrid_control(node):
             print("Features are close enough, stopping servoing")
             node.pre_docked = True
     
+    mpc_time = t_stop - t_start
+    node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
+
     if node.pre_docked:
         u_pred = np.zeros((node.mpc.N + 1, 4))
         u_pred[:, 0] = -0.05

@@ -204,7 +204,7 @@ class VisualServo(Node):
         )
 
         print(f"position error: {position_err:.2f} m")
-        print(f"orientation error: {orientation_err:.2f} degrees") #TODO: FIX THIS BECAUSE REVERSED CAMERA
+        print(f"orientation error: {orientation_err:.2f} degrees")
 
         # Check if we're within thresholds
         if (

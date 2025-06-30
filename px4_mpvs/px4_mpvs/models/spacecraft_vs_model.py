@@ -92,6 +92,34 @@ class SpacecraftVSModel:
 
         return L  # cs.MX((8,6))
 
+    def get_feature_dynamics(self, L, v, w):
+        # Image feature dynamics equation
+
+        # transform twist from base to camera frame
+        # w_cam = Rbc*w_base
+        # v_cam = Rbc*(v_base + w_base x r_bc)
+        # rotate the camera frame 180 degrees around the z-axis
+        Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])  # TODO: FIX ROTATION
+        r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
+
+        v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
+        w_cam = cs.mtimes(Rbc, w)
+        v_image = cs.vertcat(
+            v_cam[1],  # X_image = -Y_cam (right = -left)
+            -v_cam[2],  # Y_image = -Z_cam (down = -up)
+            -v_cam[0],  # Z_image = X_cam (forward = forward)
+        )
+
+        w_image = cs.vertcat(
+            w_cam[1],  # Roll around X_image = -pitch around Y_cam
+            -w_cam[2],  # Pitch around Y_image = -yaw around Z_cam
+            -w_cam[0],  # Yaw around Z_image = roll around X_cam
+        )
+        twist = cs.vertcat(v_image, w_image)  # 6x1
+        s_dot_vec = cs.mtimes(L, twist)  # 8x1
+        # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
+        return s_dot_vec
+
     def get_acados_model(self) -> AcadosModel:
 
         def skew_symmetric(v):
@@ -157,34 +185,6 @@ class SpacecraftVSModel:
 
         model = AcadosModel()
 
-        def _get_feature_dynamics(L, v, w):
-            # Image feature dynamics equation
-
-            # transform twist from base to camera frame
-            # w_cam = Rbc*w_base
-            # v_cam = Rbc*(v_base + w_base x r_bc)
-            # rotate the camera frame 180 degrees around the z-axis
-            Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])  # TODO: FIX ROTATION
-            r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
-
-            v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
-            w_cam = cs.mtimes(Rbc, w)
-            v_image = cs.vertcat(
-                v_cam[1],  # X_image = -Y_cam (right = -left)
-                -v_cam[2],  # Y_image = -Z_cam (down = -up)
-                -v_cam[0],  # Z_image = X_cam (forward = forward)
-            )
-
-            w_image = cs.vertcat(
-                w_cam[1],  # Roll around X_image = -pitch around Y_cam
-                -w_cam[2],  # Pitch around Y_image = -yaw around Z_cam
-                -w_cam[0],  # Yaw around Z_image = roll around X_cam
-            )
-            twist = cs.vertcat(v_image, w_image)  # 6x1
-            s_dot_vec = cs.mtimes(L, twist)  # 8x1
-            # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
-            return s_dot_vec
-
         # set up states & controls
         p = cs.MX.sym("p", 3)
         v = cs.MX.sym("v", 3)
@@ -196,6 +196,7 @@ class SpacecraftVSModel:
         Z = cs.MX.sym("Z", 4)
         p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
         hybrid_mode = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
+        s_dot_sym = cs.MX.sym("s_dot", 8)  # Feature dynamics
 
         x = cs.vertcat(p, v, q, w, s)
 
@@ -208,7 +209,7 @@ class SpacecraftVSModel:
         model.con_h_expr_e = g_x
 
         # Add model parameters
-        model_params = cs.vertcat(p_obj, Z, hybrid_mode)  #
+        model_params = cs.vertcat(p_obj, Z, hybrid_mode, s_dot_sym)  #
 
         # Define the image dynamics
         L = self.get_interaction_matrix(s, Z)
@@ -251,7 +252,7 @@ class SpacecraftVSModel:
             a_thrust,
             1 / 2 * skew_symmetric(w) @ q,
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
-            _get_feature_dynamics(L, v, w),
+            self.get_feature_dynamics(L, v, w),
         )
 
         f_impl = xdot - f_expl

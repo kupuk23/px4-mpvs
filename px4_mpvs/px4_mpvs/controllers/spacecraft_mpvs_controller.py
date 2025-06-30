@@ -42,11 +42,11 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 class SpacecraftVSMPC:
     def __init__(self, model, p_obj=None, x0=None, Z=None):
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
-        self.vel_limit = 0.5  # np.inf .1
+        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.vel_limit = 0.8  # np.inf .1
         self.model = model
         self.Tf = 5.0
-        self.N = 49
+        self.N = 24  # TODO: check how fast the update rate
 
         self.x0 = (
             x0
@@ -168,7 +168,7 @@ class SpacecraftVSMPC:
 
         x_error = x[0:3] - x_ref[0:3]
         x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2)/2)
+        # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2) / 2)
         x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
 
         # x_error = cs.vertcat(x_error, 2*(q_ref))
@@ -185,9 +185,12 @@ class SpacecraftVSMPC:
         p_obj = ocp.model.p[0:3]
         Z = ocp.model.p[3:7]
         hybrid_mode = ocp.model.p[7]
+        s_dot_sym = ocp.model.p[8:]  # Feature dynamics
 
         s = x[13:]  # Image features state
-        L = model_class.get_interaction_matrix(s, Z)
+        # L = model_class.get_interaction_matrix(s, Z)
+        # # Define the image dynamics
+        # s_dot = model_class.get_feature_dynamics(L, x[3:6], x[10:13])
 
         ocp = self.set_bearing_constraints(ocp, x0)
 
@@ -198,7 +201,7 @@ class SpacecraftVSMPC:
         )  # s0 = features state, Z = feature depth
 
         Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        Qp_q = 4e2  # Quaternion scalar part, 8e3
+        Qp_q = 8e2  # Quaternion scalar part, 8e3
         w_features = 9e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         # set weights for the cost function
@@ -228,9 +231,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, w_features, L)
+        # w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S, s_dot_sym)
 
-        w_p = cs.if_else(hybrid_mode > 0.5, w_p, 1.0)
+        w_p = cs.if_else(hybrid_mode > 0.5, 0, 1.0)
 
         Q = w_p * Qp + (1 - w_p) * Qs
 
@@ -240,6 +243,16 @@ class SpacecraftVSMPC:
         S_e = 70 * S
 
         R_mat = np.diag([1e1] * 4)
+
+        # ocp.model.cost_expr_ext_cost = (
+        #     x_error[:10].T @ Q @ x_error[:10]
+        #     + u_error.T @ R_mat @ u_error
+        #     + x_error[10:].T @ S @ x_error[10:]
+        # )
+
+        # ocp.model.cost_expr_ext_cost_e = (
+        #     x_error[:10].T @ Q_e @ x_error[:10] + x_error[10:].T @ S_e @ x_error[10:]
+        # )
 
         ocp.model.cost_expr_ext_cost = (
             x_error[:12].T @ Q @ x_error[:12]
@@ -264,7 +277,9 @@ class SpacecraftVSMPC:
 
         use_RTI = True
         if use_RTI:
-            ocp.solver_options.nlp_solver_type = "SQP_RTI"  # SQP_RTI, SQP
+            ocp.solver_options.nlp_solver_type = (
+                "SQP_RTI"  # SQP_RTI, SQP, non-sqp TODO : Look for other solvers
+            )
             ocp.solver_options.sim_method_num_stages = 4
             ocp.solver_options.sim_method_num_steps = 3
         else:
@@ -293,9 +308,8 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
-    def define_lyapunov_weight(
-        self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_features, L_s
-    ):
+    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, S, s_dot_sym):
+
         v = x[3:6]  # Velocity
         w = x[10:13]
 
@@ -303,22 +317,20 @@ class SpacecraftVSMPC:
         # x_err = cs.vertcat(x_err, quat_error(x[6:10], x_ref[6:10]))  # Quaternion error
         e_p = x_err
 
-        k = 10.0  # how sharp the softmax is
+        k = 5.0  # how sharp the softmax is
         w_diag = cs.vertcat(
             cs.DM([Qp_p, Qp_p, Qp_p]),
             # cs.DM([Qp_q, Qp_q, Qp_q])
         )  # 6×1 CasADi DM
         Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
+        # Qp_numeric = cs.DM(Qp_V)
 
         e_s = x[13:] - x_ref[13:]
-        S = cs.DM([w_features] * 8)  # 8×1 CasADi DM
-        S_diag = cs.diag(S)  # 8×8 CasADi DM
-
-        Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
-        Vs = 0.5 * cs.mtimes([e_s.T, S_diag, e_s])
+        # S_numeric = cs.DM(S)
+        # Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
+        # Vs = 0.5 * cs.mtimes([e_s.T, S, e_s])
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
-        image_dynamics = cs.mtimes(L_s, w)  # Image dynamics
-        Vs_dot = cs.mtimes([e_s.T, S_diag, image_dynamics])
+        Vs_dot = cs.mtimes([e_s.T, S, s_dot_sym])
 
         # softmax weights
         wp = cs.exp(k * cs.fabs(Vp_dot))
@@ -329,12 +341,12 @@ class SpacecraftVSMPC:
 
         self.lyapunov_eval = cs.Function(
             "lyapunov_eval",
-            [x, x_ref],
-            [Vp, Vs, Vp_dot, Vs_dot, V_dot, wp, ws],
-            ["state", "reference"],
-            ["Vp", "Vs", "Vp_dot", "Vs_dot", "V_dot", "wp", "ws"],
+            [x, x_ref, s_dot_sym],
+            [Vp_dot, Vs_dot, V_dot, wp, ws],
+            ["state", "reference", "s_dot"],
+            ["Vp_dot", "Vs_dot", "V_dot", "wp", "ws"],
         )
-        return wp
+        return wp, V_dot
 
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
@@ -361,6 +373,12 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
         hybrid_mode = hybrid_mode if hybrid_mode is not None else self.hybrid_mode
 
+        # if hybrid_mode:
+        #     L_val = self.model.get_interaction_matrix(x0[13:], Z)
+        #     s_dot = self.model.get_feature_dynamics(L_val, x0[3:6], x0[10:13])
+        # else:
+        #     s_dot = np.zeros(8)
+
         # preparation phase
         ocp_solver = self.ocp_solver
 
@@ -384,14 +402,15 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
         if verbose and hasattr(self, "lyapunov_eval"):
+            pass
             # Evaluate the Lyapunov function and its derivatives
-            Vp, Vs, Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
-                ocp_solver.get(0, "x"), ref[:, 0]
-            )
-            print(f"===== Lyapunov Values =====")
-            print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-            print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
-            print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
+            # Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
+            #     ocp_solver.get(0, "x"), ref[:, 0], s_dot_val
+            # )
+            # print(f"===== Lyapunov Values =====")
+            # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+            # print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
+            # print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
 
             # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
 
