@@ -82,11 +82,10 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.aligning_threshold = 0.2
+        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.sitl = True
 
-        # self.srv = self.create_service(
-        #     SetBool, "run_docking", self.docking_callback_enabled
-        # )
+        self.aligning_threshold = 0.2
 
         self.camera_frame_id = self.declare_parameter(
             "camera_frame_id", "camera_link"
@@ -96,9 +95,8 @@ class SpacecraftIBMPVS(Node):
         self.desired_points = np.array(
             [[82, 123], [563, 123], [176, 337], [505, 218]]
         ).flatten()
-        # Get mode; rate, wrench, direct_allocation
-        self.mode = self.declare_parameter("mode", "direct_allocation").value
-        self.sitl = True
+
+        
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
@@ -135,14 +133,13 @@ class SpacecraftIBMPVS(Node):
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
         self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
-        self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
         # self.setpoint_position = np.array([0.0, 0.0, 0.0])
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
         self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis
+        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -156,7 +153,7 @@ class SpacecraftIBMPVS(Node):
         self.pre_docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
-        self.mpc = SpacecraftVSMPC(self.model)
+        self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.ibvs_e_threshold = 15
         
@@ -408,9 +405,14 @@ class SpacecraftIBMPVS(Node):
             self.aligned = request.aligned
             self.aligning = False
             self.mode = 2 # TODO: IBVS mode for debug, later switch to 1 for hybrid
-            self.p_obj = np.array([-100.0, 0, 0])
+            
             self.get_logger().info("Robot is aligned, stopping homing mode")
             # update setpoint to be somewhere between the robot and object
+
+            self.get_logger().info(
+            f"OLD Setpoint position: {self.setpoint_position}"
+        )
+
             self.setpoint_position = np.array(
                 [
                     (self.vehicle_local_position[0] + self.p_obj[0]) / 2,
@@ -418,7 +420,12 @@ class SpacecraftIBMPVS(Node):
                     (self.vehicle_local_position[2] + self.p_obj[2]) / 2,
                 ]
             )
+        self.get_logger().info(
+            f"NEW Setpoint position: {self.setpoint_position}"
+        )
         self.mpc.update_constraints(self.aligning)
+
+        self.p_obj = np.array([-100.0, 0, 0])
 
         return response
 

@@ -40,9 +40,9 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 
 
 class SpacecraftVSMPC:
-    def __init__(self, model, p_obj=None, x0=None, Z=None):
+    def __init__(self, model, build=False, p_obj=None, x0=None, Z=None):
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = build  # Set to False after the first run to avoid rebuilding
         self.vel_limit = 0.8  # np.inf .1
         self.model = model
         self.Tf = 5.0
@@ -221,22 +221,26 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = np.diag(
+        S_s = np.diag(
             [
                 *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
             ]
         )
 
-        w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S, s_dot_sym)
+        w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S_s, s_dot_sym)
 
-        w_p = cs.if_else(hybrid_mode > 0.5, w_p, 1.0) # change w_p to 0 for discrete switch testing
+        w_p = cs.if_else(
+            hybrid_mode > 0.5, w_p, 1.0
+        )  # change w_p to 0 for discrete switch testing
 
-        Q = w_p * Qp + (1 - w_p) * Qs
+        Q = w_p * Qp + (1.0 - w_p) * Qs
 
-        S = (1 - w_p) * S
+        S = (1.0 - w_p) * S_s
 
         Q_e = 20 * Q
         S_e = 70 * S
+
+        # TODO: debug the Q and S matrices in hybrid mode
 
         R_mat = np.diag([1e1] * 4)
 
@@ -269,7 +273,7 @@ class SpacecraftVSMPC:
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # 'GAUSS_NEWTON', 'EXACT'
         ocp.solver_options.integrator_type = "ERK"
 
-        # ocp.solver_options.print_level = 1
+        ocp.solver_options.print_level = 0
 
         use_RTI = True
         if use_RTI:
@@ -277,6 +281,7 @@ class SpacecraftVSMPC:
                 "SQP_RTI"  # SQP_RTI, SQP, non-sqp TODO : Look for other solvers
             )
             ocp.solver_options.sim_method_num_stages = 4
+
             ocp.solver_options.sim_method_num_steps = 3
         else:
             ocp.solver_options.nlp_solver_type = "SQP"  # SQP_RTI, SQP
@@ -294,6 +299,7 @@ class SpacecraftVSMPC:
             build=self.build,
             generate=self.build,
         )
+
         # create an integrator with the same settings as used in the OCP solver.
         acados_integrator = AcadosSimSolver(
             ocp,
@@ -309,41 +315,35 @@ class SpacecraftVSMPC:
         v = x[3:6]  # Velocity
         w = x[10:13]
 
-        x_err = x[0:3] - x_ref[0:3]  # Position error
-        # x_err = cs.vertcat(x_err, quat_error(x[6:10], x_ref[6:10]))  # Quaternion error
-        e_p = x_err
+        e_p = x[0:3] - x_ref[0:3]  # Position error
 
-        k = 5.0  # how sharp the softmax is
-        w_diag = cs.vertcat(
-            cs.DM([Qp_p, Qp_p, Qp_p]),
-            # cs.DM([Qp_q, Qp_q, Qp_q])
-        )  # 6×1 CasADi DM
+        k = 10  # how sharp the softmax is
+        w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
+
         Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
-        # Qp_numeric = cs.DM(Qp_V)
 
         e_s = x[13:] - x_ref[13:]
-        # S_numeric = cs.DM(S)
-        # Vp = 0.5 * cs.mtimes([e_p.T, Qp_V, e_p])
-        # Vs = 0.5 * cs.mtimes([e_s.T, S, e_s])
+
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot_sym])
 
-        
+        softmax_p = cs.exp(-k * Vp_dot)  # ensure Vp_dot is non-positive
+        softmax_s = cs.if_else(
+            Vs_dot >= 0, 0, cs.exp(-k * Vs_dot)
+        )  # ensure Vs_dot is non-positive
 
         # softmax weights
-        wp = cs.exp(k * cs.fabs(Vp_dot))
-        ws = cs.if_else(Vs_dot == 0, 0, cs.exp(k * cs.fabs(Vs_dot)))
-        wp = wp / (wp + ws)
-        ws = 1 - wp 
+        wp = softmax_p / (softmax_p + softmax_s)
+        ws = 1.0 - wp
 
         V_dot = Vp_dot + Vs_dot
 
         self.lyapunov_eval = cs.Function(
             "lyapunov_eval",
             [x, x_ref, s_dot_sym],
-            [Vp_dot, Vs_dot, V_dot, wp, ws],
+            [Vp_dot, Vs_dot, V_dot, wp, ws, softmax_p, softmax_s],
             ["state", "reference", "s_dot"],
-            ["Vp_dot", "Vs_dot", "V_dot", "wp", "ws"],
+            ["Vp_dot", "Vs_dot", "V_dot", "wp", "ws", "softmax_p", "softmax_s"],
         )
         return wp, V_dot
 
@@ -377,9 +377,9 @@ class SpacecraftVSMPC:
         s_dot = s_dot.full().flatten()  # Convert to numpy array
         if hybrid_mode:
             L_val = self.model.L_f(x0[13:], Z)
-            s_dot = self.model.feat_dyn_f( L_val, x0[3:6], x0[10:13])
+            s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
             s_dot = s_dot.full().flatten()  # Convert to numpy array
-            
+
         else:
             s_dot = np.zeros(8)
 
@@ -408,16 +408,21 @@ class SpacecraftVSMPC:
         if verbose and hasattr(self, "lyapunov_eval"):
             # pass
             # Evaluate the Lyapunov function and its derivatives
-            x_ref = ref[:-4, 0] if ref is not None else zero_ref [:-4, 0]
-            Vp_dot, Vs_dot, V_dot, wp, ws = self.lyapunov_eval(
+            x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
+            Vp_dot, Vs_dot, V_dot, wp, ws, softmax_p, softmax_s = self.lyapunov_eval(
                 ocp_solver.get(0, "x"), x_ref, s_dot
             )
             print(f"===== Lyapunov Values =====")
             # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-            print(f"Vp_dot: {float(Vp_dot):.4f}, Vs_dot: {float(Vs_dot):.4f}")
+            print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+            print(
+                f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+            )
             print(f"wp: {float(wp):.4f}, ws: {float(ws):.4f}")
 
-            # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
+            # ocp_solver.dump_last_qp_to_json(filename="last_qp.json",overwrite=True)
+
+            self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
 
         if status != 0:
             raise Exception(f"acados returned status {status}.")

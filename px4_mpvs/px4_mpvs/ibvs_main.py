@@ -213,7 +213,8 @@ class MarkerDetectorNode(Node):
                 cv2.waitKey(1)
 
         except Exception as e:
-            self.get_logger().error(f"Error processing image: {str(e)}")
+            # self.get_logger().error(f"Error processing image: {str(e)}")
+            pass
 
 
 def main(args=None):
