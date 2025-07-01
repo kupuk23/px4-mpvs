@@ -76,13 +76,15 @@ from vs_msgs.srv import SetHomePose
 
 from px4_mpvs.hybrid_control import handle_hybrid_control
 
+from time import perf_counter
+
 
 class SpacecraftIBMPVS(Node):
 
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = True
 
         self.aligning_threshold = 0.2
@@ -144,13 +146,23 @@ class SpacecraftIBMPVS(Node):
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
-        self.recorded_markers = np.zeros(8)  # for recording markers
-        self.recorded_p_error = np.zeros(3)  # for recording position error
+        self.statistics = {
+            "recorded_features": [],
+            "recorded_wp": [],
+            "recorded_ws": [],
+            "features_error": [],
+            "desired_points": self.desired_points,
+            "Vp_dot": [],
+            "Vs_dot": [],
+            
+        }
+        self.dock_timer = perf_counter()  # Timer for docking
 
         self.aligning = False
         self.aligned = False  # flag to check if the robot is aligned
         self.markers_detected = False
         self.pre_docked = False
+        self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)

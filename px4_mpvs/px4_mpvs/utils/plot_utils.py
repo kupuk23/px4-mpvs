@@ -5,6 +5,27 @@ import matplotlib
 matplotlib.use("TkAgg")  # Use TkAgg backend for interactive plotting
 
 
+def plot_stats(statistics):
+    plot_features(statistics["recorded_features"], statistics["desired_points"])
+    plot_weights(statistics["recorded_wp"], statistics["recorded_ws"])
+
+def plot_weights(w_p, w_s):
+    """
+    Plot the weights w_p and w_s over time.
+
+    Args:
+        w_p (np.ndarray): Weights for the platform.
+        w_s (np.ndarray): Weights for the spacecraft.
+    """
+    fig, ax = plt.subplots()
+    ax.plot(w_p, label="w_p", color="blue")
+    ax.plot(w_s, label="w_s", color="orange")
+    ax.set_xlabel("Time Step")
+    ax.set_ylabel("Weight Value")
+    ax.legend()
+    plt.title("Weights Over Time")
+    plt.show()
+
 def plot_features(features, desired):
     """
     Plot the features in 3D space.
@@ -15,6 +36,8 @@ def plot_features(features, desired):
     """
     fig = plt.figure()
     ax = fig.add_subplot(111)
+
+    features = np.array(features)
 
     p1 = features[1::3, 0:2]
     p2 = features[1::3, 2:4]

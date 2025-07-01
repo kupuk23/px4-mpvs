@@ -95,8 +95,8 @@ def generate_launch_description():
         # ),
         Node(package='px4_mpvs',
             namespace=namespace,
-            executable='ibvs_main',
-            name='ibvs_main',
+            executable='features_detector_node',
+            name='features_detector_node',
             # output='screen',
             emulate_tty=True,
             parameters=[

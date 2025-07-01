@@ -6,6 +6,8 @@ from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import OffboardControlMode
 from nav_msgs.msg import Path, Odometry
 
+
+from px4_mpvs.utils.plot_utils import plot_stats
 from px4_mpvs.utils import math_utils
 from time import perf_counter
 
@@ -65,35 +67,59 @@ def handle_hybrid_control(node):
     ref = np.repeat(ref.reshape((-1, 1)), node.mpc.N + 1, axis=1)
 
     t_start = perf_counter()
-    t_stop = perf_counter()
+
+    if node.docked:
+        return
+    
     # Solve MPC
     if not node.aligned:
-        u_pred, x_pred = node.mpc.solve(
+        u_pred, x_pred, w_p,w_s = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z
         )
-        t_stop = perf_counter()
+
     elif node.aligned and not node.pre_docked:
-        u_pred, x_pred = node.mpc.solve(
+        u_pred, x_pred,w_p,w_s = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
         )  # TODO: add hybrid flag to use dynamic weight
-        t_stop = perf_counter()
 
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
         feature_desired = ref[13:21, 0].flatten()  # Desired features
         error = np.linalg.norm(feature_current - feature_desired)
-        # print(f"Feature current: {feature_current}")
-        # print(f"Feature desired: {feature_desired}")
+        node.statistics["recorded_features"].append(feature_current)
+        node.statistics["features_error"].append(error)
         print(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             print("Features are close enough, stopping servoing")
             node.pre_docked = True
+            node.dock_timer = perf_counter()  # Start the dock timer
+
+
+    if not node.pre_docked:
+        w_p = float(w_p)
+        w_s = float(w_s)
+        # TODO: Add vs_dot and vp_dot to statistics
+        node.statistics["recorded_wp"].append(w_p)
+        node.statistics["recorded_ws"].append(w_s)
+
+    t_stop = perf_counter()
+        
 
     mpc_time = t_stop - t_start
     # node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
 
-    if node.pre_docked:
+    if node.pre_docked and not node.docked:
+        # run this for n seconds to ensure the spacecraft is docked
+        current_time = perf_counter()
+        if current_time - node.dock_timer > 1:
+            node.docked = True
+            print("Docking complete")
+            u_pred = np.zeros((node.mpc.N + 1, 4))
+            plot_stats(node.statistics)
+
+
+        
         u_pred = np.zeros((node.mpc.N + 1, 4))
         u_pred[:, 0] = -0.05
         u_pred[:, 1] = -0.05
@@ -116,3 +142,4 @@ def handle_hybrid_control(node):
     if node.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
 
         node.publish_direct_actuator_setpoint(u_pred)
+

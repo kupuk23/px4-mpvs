@@ -30,7 +30,7 @@ setup(
             'mpvs_main = px4_mpvs.mpvs_main:main',
             'test_missalignment = px4_mpvs.test.test_missalignment:main',
             'test_pose_camera = px4_mpvs.test.test_pose_camera:main',
-            'ibvs_main = px4_mpvs.ibvs_main:main',
+            'features_detector_node = px4_mpvs.features_detector_node:main',
         ],
     },
 )
