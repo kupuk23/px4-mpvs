@@ -69,6 +69,9 @@ def handle_hybrid_control(node):
     t_start = perf_counter()
 
     if node.docked:
+        if node.nav_state == VehicleStatus.NAVIGATION_STATE_OFFBOARD:
+            u_pred = np.zeros((node.mpc.N + 1, 4))
+            node.publish_direct_actuator_setpoint(u_pred)
         return
     
     # Solve MPC
@@ -88,12 +91,24 @@ def handle_hybrid_control(node):
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        print(f"Feature errors: {error}")
+        # print(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
-            print("Features are close enough, stopping servoing")
-            node.pre_docked = True
-            node.dock_timer = perf_counter()  # Start the dock timer
+            current_time = perf_counter()
+            if not node.pre_docked_time:
+                node.pre_docked_time = current_time
+                
+            elapsed_time = current_time - node.pre_docked_time
+            node.get_logger().info(
+                    f"features are close enough, stabilizing... {int(elapsed_time)}"
+                )
+            if elapsed_time > node.pre_docked_time_threshold:
+                print("Features are close enough, stopping servoing")
+                node.pre_docked = True
+                node.pre_docked_time = 0
+                node.dock_timer = perf_counter()  # Start the dock timer
+        else:
+            node.pre_docked_time = 0
 
 
     if not node.pre_docked:
@@ -112,17 +127,16 @@ def handle_hybrid_control(node):
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.dock_timer > 1:
+        if current_time - node.dock_timer > 3:
             node.docked = True
             print("Docking complete")
-            u_pred = np.zeros((node.mpc.N + 1, 4))
-            plot_stats(node.statistics)
+            # plot_stats(node.statistics)
 
 
         
         u_pred = np.zeros((node.mpc.N + 1, 4))
-        u_pred[:, 0] = -0.05
-        u_pred[:, 1] = -0.05
+        u_pred[:, 0] = -0.1
+        u_pred[:, 1] = -0.1
         x_pred = x0.reshape(1, -1).repeat(node.mpc.N + 1, axis=0)
 
     # Colect data

@@ -219,8 +219,8 @@ class SpacecraftVSModel:
         # Setup external parameters
         Z = cs.MX.sym("Z", 4)
         p_obj = cs.MX.sym("p_obj", 3)  # Object position in inertial frame
-        hybrid_mode = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
-        s_dot_sym = cs.MX.sym("s_dot", 8)  # Feature dynamics
+        w_p = cs.MX.sym("w_p", 1)  # Object angular velocity in inertial frame
+        w_s = cs.MX.sym("w_s", 1)  # Feature dynamics
 
         x = cs.vertcat(p, v, q, w, s)
 
@@ -233,7 +233,7 @@ class SpacecraftVSModel:
         model.con_h_expr_e = g_x
 
         # Add model parameters
-        model_params = cs.vertcat(p_obj, Z, hybrid_mode, s_dot_sym)  #
+        model_params = cs.vertcat(p_obj, Z, w_p, w_s)  #
 
         # Define the image dynamics
         L = self.get_interaction_matrix(s, Z)

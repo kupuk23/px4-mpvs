@@ -7,7 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "docked_image_v3"
+filename = "docked_image_v4"
 
 
 class SaveImage(Node):
@@ -18,6 +18,8 @@ class SaveImage(Node):
         self.subscription = self.create_subscription(
             CompressedImage, "/camera/image/compressed", self.image_callback, 10
         )
+        
+        
 
         # Initialize depth image
         self.depth_image = None

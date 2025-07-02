@@ -162,6 +162,8 @@ class SpacecraftIBMPVS(Node):
         self.aligned = False  # flag to check if the robot is aligned
         self.markers_detected = False
         self.pre_docked = False
+        self.pre_docked_time = 0  # Timer for pre-docking
+        self.pre_docked_time_threshold = 1.5  # time to stabilize the robot before docking (seconds)
         self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
@@ -416,7 +418,7 @@ class SpacecraftIBMPVS(Node):
         else:
             self.aligned = request.aligned
             self.aligning = False
-            self.mode = 2 # TODO: IBVS mode for debug, later switch to 1 for hybrid
+            self.mode = 1
             
             self.get_logger().info("Robot is aligned, stopping homing mode")
             # update setpoint to be somewhere between the robot and object

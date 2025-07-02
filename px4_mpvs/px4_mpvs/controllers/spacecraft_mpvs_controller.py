@@ -37,6 +37,7 @@ import casadi as cs
 import time
 from px4_mpvs.utils.math_utils import quat_error
 from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
+from time import perf_counter
 
 
 class SpacecraftVSMPC:
@@ -47,6 +48,11 @@ class SpacecraftVSMPC:
         self.model = model
         self.Tf = 5.0
         self.N = 24  # TODO: check how fast the update rate
+        self.ibvs_mode = False  # True for ibvs, False for pbvs
+
+        self.Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_q = 8e2  # Quaternion scalar part, 8e3
+        self.w_features = 5e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         self.x0 = (
             x0
@@ -88,7 +94,6 @@ class SpacecraftVSMPC:
         self.s_max = 640 - 10  # 640x480 image
 
         self.Z0 = Z if Z is not None else np.array([1.0] * 4)
-        self.hybrid_mode = 0.0
 
         self.ocp_solver, self.integrator = self.setup(
             self.x0, self.N, self.Tf, self.p_obj0, Z0=self.Z0
@@ -185,20 +190,20 @@ class SpacecraftVSMPC:
         # Initialize parameters
         p_obj = ocp.model.p[0:3]
         Z = ocp.model.p[3:7]
-        hybrid_mode = ocp.model.p[7]
-        s_dot_sym = ocp.model.p[8:]  # Feature dynamics
+        w_p = ocp.model.p[7]
+        w_s = ocp.model.p[8]  # Feature dynamics
 
         ocp = self.set_bearing_constraints(ocp, x0)
 
-        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, hybrid_mode, s_dot_sym)
+        ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, w_p, w_s)
 
         p_0 = np.concatenate(
-            (x0, np.zeros(nu), p_obj0, Z0, [self.hybrid_mode], np.zeros(8))
-        )  # s0 = features state, Z = feature depth
+            (x0, np.zeros(nu), p_obj0, Z0, np.ones(1), np.zeros(1))
+        )  # Z = feature depth
 
-        Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        Qp_q = 8e2  # Quaternion scalar part, 8e3
-        w_features = 8e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        Qp_p = self.Qp_p  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        Qp_q = self.Qp_q  # Quaternion scalar part, 8e3
+        w_features = self.w_features  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         # set weights for the cost function
         Qp = np.diag(
@@ -214,10 +219,10 @@ class SpacecraftVSMPC:
         Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[7e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[6e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # 0,
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[3e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[2e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
@@ -227,18 +232,18 @@ class SpacecraftVSMPC:
             ]
         )
 
-        w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S_s, s_dot_sym)
+        # w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S_s, s_dot)
 
-        w_p = cs.if_else(
-            hybrid_mode > 0.5, w_p, 1.0
-        )  # change w_p to 0 for discrete switch testing
+        # w_p = cs.if_else(
+        #     hybrid_mode > 0.5, w_p, 1.0
+        # )  # change w_p to 0 for discrete switch testing
 
         Q = w_p * Qp + (1.0 - w_p) * Qs
 
         S = (1.0 - w_p) * S_s
 
         Q_e = 20 * Q
-        S_e = 80 * S
+        S_e = 100 * S
 
         # TODO: debug the Q and S matrices in hybrid mode
 
@@ -310,53 +315,83 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
-    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, S, s_dot_sym):
-
+    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot):
+        x = x.reshape(-1, 1)  # Ensure x is a column vector
+        x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
-        w = x[10:13]
 
         e_p = x[0:3] - x_ref[0:3]  # Position error
 
-        k = 1.5  # how sharp the softmax is
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
         Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
 
+        S = np.diag(
+            [
+                *[w_feat] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+            ]
+        )
+
+        S = S * 30
+
         e_s = x[13:] - x_ref[13:]
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
-        Vs_dot = cs.mtimes([e_s.T, S, s_dot_sym])
-        softmax_p = 0
-        softmax_s = 0
-        softmax_p = cs.exp(-k * Vp_dot) 
-        softmax_s = cs.exp(-k * Vs_dot)  
-        softmax_p = cs.if_else(Vp_dot > 0, 0, cs.exp(-k * Vp_dot)) 
-        # softmax_p = cs.exp(-k * Vp_dot)
-        softmax_s = cs.if_else(
-            Vs_dot >= 0, 0, cs.exp(-k * Vs_dot)
-        )  # ensure Vs_dot is non-positive
+        Vs_dot = cs.mtimes([e_s.T, S, s_dot])
+        # softmax_p = 0
+        # softmax_s = 0
 
-        # softmax weights
-        w_p = softmax_p / (softmax_p + softmax_s)
-        w_s = 1.0 - w_p
+        k = 3  # how sharp the softmax is
 
-        # eps   = 1e-6      # keeps denominator strictly positive
+        softmax_p = cs.exp(-k * Vp_dot)
+        softmax_p = cs.if_else(
+            Vp_dot > 0.02, 0, softmax_p
+        )
+        softmax_s = cs.exp(-k * Vs_dot)
+
+
+        eps = 1e-5  # keeps denominator strictly positive
+
+        # # softmax weights
+        w_s = softmax_s / (softmax_p + softmax_s + eps)
+        w_p = 1.0 - w_s
+
+        #convert to numpy arrays
+        w_s = w_s.full().flatten()
+        w_p = w_p.full().flatten()
+
+        # test with quadratic energy
+        # Vp_dot_neg = cs.fmin(Vp_dot, 0)  # ensure Vp_dot is non-positive
+        # Vs_dot_neg = cs.fmin(Vs_dot, 0)  # ensure Vs
+
+        # eps   = 1e-4      # keeps denominator strictly positive
+        # clipval = 10.0          # caps |dotV| before squaring
+
+        # vpDot_cl   = cs.fmin(cs.fmax(Vp_dot, -clipval), clipval)
+        # vsDot_cl   = cs.fmin(cs.fmax(Vs_dot, -clipval), clipval)
+
+        # w_p = vpDot_cl**2 / (vpDot_cl**2 + vsDot_cl**2 + eps)
+        # w_s = 1.0 - w_p  # w_s is always non-negative
+        # w_p = cs.fmax(w_p, eps)  # ensure w_p is non-negative
+        # w_s = cs.fmax(w_s, eps)  # ensure w_s is non-negative
+
         # Vs_dot = cs.if_else(
         #     Vs_dot >= 0, 0, Vs_dot
         # )
-        # w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        # w_p = cs.if_else(Vp_dot >= 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
         # w_s = 1.0 - w_p  # w_s is always non-negative
 
         V_dot = Vp_dot + Vs_dot
 
-        self.lyapunov_eval = cs.Function(
-            "lyapunov_eval",
-            [x, x_ref, s_dot_sym],
-            [Vp_dot, Vs_dot, V_dot, w_p, w_s, softmax_p, softmax_s],
-            ["state", "reference", "s_dot"],
-            ["Vp_dot", "Vs_dot", "V_dot", "w_p", "w_s", "softmax_p", "softmax_s"],
-        )
-        return w_p, V_dot
+        # self.lyapunov_eval = cs.Function(
+        #     "lyapunov_eval",
+        #     [x, x_ref, s_dot],
+        #     [Vp_dot, Vs_dot, V_dot, w_p, w_s, softmax_p, softmax_s],
+        #     ["state", "reference", "s_dot"],
+        #     ["Vp_dot", "Vs_dot", "V_dot", "w_p", "w_s", "softmax_p", "softmax_s"],
+        # )
+        return w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s
 
     def update_constraints(self, servoing_enabled):
         # Update the constraints based on the servoing_enabled flag
@@ -364,7 +399,7 @@ class SpacecraftVSMPC:
             2e3 if servoing_enabled else 0
         )  # 2e3, TODO: set to 0 for no slack
 
-    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=None):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False):
 
         # Set reference, create zero reference
         if ref is None:
@@ -381,21 +416,41 @@ class SpacecraftVSMPC:
 
         p_obj = p_obj if p_obj is not None else self.p_obj0
         Z = Z if Z is not None else self.Z0
-        hybrid_mode = hybrid_mode if hybrid_mode is not None else self.hybrid_mode
 
         L_val = self.model.L_f(x0[13:], Z)
         s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
-        if hybrid_mode:
+
+        # preparation phase
+        ocp_solver = self.ocp_solver
+
+        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
+
+        if hybrid_mode and not self.ibvs_mode:
             L_val = self.model.L_f(x0[13:], Z)
             s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
             s_dot = s_dot.full().flatten()  # Convert to numpy array
 
+            w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
+                self.define_lyapunov_weight(
+                    ocp_solver.get(0, "x"),
+                    x_ref,
+                    self.Qp_p,
+                    self.Qp_q,
+                    self.w_features,
+                    s_dot,
+                )
+            )
+            if w_p == 0:
+                self.ibvs_mode = True
+        elif hybrid_mode and self.ibvs_mode:
+            w_p = np.zeros(1)
+            w_s = np.ones(1) 
         else:
+            self.ibvs_mode = False
             s_dot = np.zeros(8)
-
-        # preparation phase
-        ocp_solver = self.ocp_solver
+            w_p = np.ones(1)  # Set to 1 for no hybrid mode
+            w_s = np.zeros(1)
 
         for i in range(self.N + 1):
             if i != self.N and i != 0:
@@ -405,10 +460,10 @@ class SpacecraftVSMPC:
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], p_obj, Z, [hybrid_mode], s_dot])
+                p_i = np.concatenate([ref[:, i], p_obj, Z, w_p, w_s])
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, p_obj, Z, [hybrid_mode], s_dot])
+                p_i = np.concatenate([zero_ref, p_obj, Z, w_p, w_s])
             ocp_solver.set(i, "p", p_i)
 
         # set initial state
@@ -416,24 +471,18 @@ class SpacecraftVSMPC:
         ocp_solver.set(0, "ubx", x0.flatten())
 
         status = ocp_solver.solve()
-        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
-        Vp_dot, Vs_dot, V_dot, w_p, w_s, softmax_p, softmax_s = self.lyapunov_eval(
-                ocp_solver.get(0, "x"), x_ref, s_dot
-            )
-        if verbose and hasattr(self, "lyapunov_eval"):
-            # pass
-            # Evaluate the Lyapunov function and its derivatives
-            
-            
-            print(f"===== Lyapunov Values =====")
-            # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-            print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-            print(
-                f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-            )
-            print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
-            # ocp_solver.dump_last_qp_to_json(filename="last_qp.json",overwrite=True)
+        if verbose:
+            if hybrid_mode:
+                print(f"===== Lyapunov Values =====")
+                # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+                print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+                print(
+                    f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+                )
+                print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+
+            # ocp_solver.dump_last_qp_to_json(filename="last_qp.json", overwrite=True)
 
             # self.ocp_solver.print_statistics()  # encapsulates: stat = ocp_solver.get_stats("statistics")
 
