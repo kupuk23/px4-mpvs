@@ -146,6 +146,7 @@ class SpacecraftIBMPVS(Node):
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
+        self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.statistics = {
             "recorded_features": [],
             "recorded_wp": [],
@@ -154,6 +155,7 @@ class SpacecraftIBMPVS(Node):
             "desired_points": self.desired_points,
             "Vp_dot": [],
             "Vs_dot": [],
+            "hybrid_duration": 0.0,  # duration of the hybrid control in seconds
             
         }
         self.dock_timer = perf_counter()  # Timer for docking
@@ -416,6 +418,7 @@ class SpacecraftIBMPVS(Node):
             self.aligning = True
             self.get_logger().info("Starting homing mode")
         else:
+            self.hybrid_start_time = perf_counter()
             self.aligned = request.aligned
             self.aligning = False
             self.mode = 1

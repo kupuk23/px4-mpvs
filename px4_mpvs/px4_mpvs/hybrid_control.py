@@ -11,6 +11,8 @@ from px4_mpvs.utils.plot_utils import plot_stats
 from px4_mpvs.utils import math_utils
 from time import perf_counter
 
+import pickle
+import datetime
 
 def handle_hybrid_control(node):
 
@@ -128,9 +130,17 @@ def handle_hybrid_control(node):
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
         if current_time - node.dock_timer > 3:
+            docking_duration = current_time - node.hybrid_start_time
+            node.statistics["hybrid_duration"] = docking_duration
             node.docked = True
-            print("Docking complete")
-            # plot_stats(node.statistics)
+            print("Docking completed in {:.2f} seconds".format(docking_duration))
+            # save the statistics into pickle
+            date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
+            pickle_filename = f"hybrid_statistics_sigmoid({date}).pickle"
+            with open(pickle_filename, "wb") as f:
+                pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            plot_stats(node.statistics)
 
 
         

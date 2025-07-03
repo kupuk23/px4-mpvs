@@ -219,7 +219,7 @@ class SpacecraftVSMPC:
         Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[6e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[65e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # 0,
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[2e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
@@ -341,48 +341,42 @@ class SpacecraftVSMPC:
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 3  # how sharp the softmax is
+        k = 3.5 # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(
             Vp_dot > 0.02, 0, softmax_p
         )
         softmax_s = cs.exp(-k * Vs_dot)
-
-
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights
         w_s = softmax_s / (softmax_p + softmax_s + eps)
         w_p = 1.0 - w_s
 
-        #convert to numpy arrays
-        w_s = w_s.full().flatten()
-        w_p = w_p.full().flatten()
 
-        # test with quadratic energy
-        # Vp_dot_neg = cs.fmin(Vp_dot, 0)  # ensure Vp_dot is non-positive
-        # Vs_dot_neg = cs.fmin(Vs_dot, 0)  # ensure Vs
+        #  sigmoid weights
+        # delta = Vs_dot - Vp_dot           # +ve ⇒ IBVS better
+        # cap   = cs.fmin(cs.fmax(k*delta, -40), 40)
+        # w_s    = 1 / (1 + cs.exp(cap))     # logistic
+        # w_p    = 1 - w_s
 
-        # eps   = 1e-4      # keeps denominator strictly positive
-        # clipval = 10.0          # caps |dotV| before squaring
+        
+        
 
-        # vpDot_cl   = cs.fmin(cs.fmax(Vp_dot, -clipval), clipval)
-        # vsDot_cl   = cs.fmin(cs.fmax(Vs_dot, -clipval), clipval)
-
-        # w_p = vpDot_cl**2 / (vpDot_cl**2 + vsDot_cl**2 + eps)
-        # w_s = 1.0 - w_p  # w_s is always non-negative
-        # w_p = cs.fmax(w_p, eps)  # ensure w_p is non-negative
-        # w_s = cs.fmax(w_s, eps)  # ensure w_s is non-negative
 
         # Vs_dot = cs.if_else(
         #     Vs_dot >= 0, 0, Vs_dot
         # )
-        # w_p = cs.if_else(Vp_dot >= 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
-        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
+        # w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        # # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
         # w_s = 1.0 - w_p  # w_s is always non-negative
 
         V_dot = Vp_dot + Vs_dot
+
+        #convert to numpy arrays
+        w_s = w_s.full().flatten()
+        w_p = w_p.full().flatten()
 
         # self.lyapunov_eval = cs.Function(
         #     "lyapunov_eval",
@@ -441,8 +435,11 @@ class SpacecraftVSMPC:
                     s_dot,
                 )
             )
-            if w_p == 0:
-                self.ibvs_mode = True
+            # TEST DISCRETE
+            # w_p = np.zeros(1)
+            # w_s = np.ones(1) 
+            if w_p < 0.05:
+                self.ibvs_mode = True 
         elif hybrid_mode and self.ibvs_mode:
             w_p = np.zeros(1)
             w_s = np.ones(1) 
@@ -473,7 +470,7 @@ class SpacecraftVSMPC:
         status = ocp_solver.solve()
 
         if verbose:
-            if hybrid_mode:
+            if hybrid_mode and not self.ibvs_mode:
                 print(f"===== Lyapunov Values =====")
                 # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
                 print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
