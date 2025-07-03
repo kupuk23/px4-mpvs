@@ -66,7 +66,9 @@ from px4_msgs.msg import VehicleThrustSetpoint
 from vs_msgs.msg import ServoPoses
 
 from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
+from px4_mpvs.models.spacecraft_vs_model_cs import SpacecraftVSModelCasadi
 from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
+from px4_mpvs.controllers.spacecraft_mpvs_controller_cs import SpacecraftVSMPCCasadi
 
 
 from std_srvs.srv import SetBool
@@ -168,8 +170,8 @@ class SpacecraftIBMPVS(Node):
         self.pre_docked_time_threshold = 1.5  # time to stabilize the robot before docking (seconds)
         self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
-        self.model = SpacecraftVSModel()
-        self.mpc = SpacecraftVSMPC(self.model, build = self.build)
+        self.model = SpacecraftVSModelCasadi()
+        self.mpc = SpacecraftVSMPCCasadi(self.model, p_obj=self.p_obj, Z=self.Z)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.ibvs_e_threshold = 15
         
