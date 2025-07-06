@@ -84,14 +84,16 @@ def plot_features(features, desired):
     plt.show()
 
 
-if __name__ == "__main__":
-    features = np.load("recorded_markers.npy", allow_pickle=True)
-    desired_points = np.array(
-        [
-            [99, 186],
-            [535, 187],
-            [190, 394],
-            [481, 277],
-        ]
-    ).flatten()
-    plot_features(features, desired_points)
+# if __name__ == "__main__":
+    # features = np.load("recorded_markers.npy", allow_pickle=True)
+    # desired_points = np.array(
+    #     [
+    #         [99, 186],
+    #         [535, 187],
+    #         [190, 394],
+    #         [481, 277],
+    #     ]
+    # ).flatten()
+    # load statistics from multiple pickle files
+
+    # plot_features(features, desired_points)

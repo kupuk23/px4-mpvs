@@ -146,7 +146,6 @@ class SpacecraftIBMPVS(Node):
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
-        self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.statistics = {
             "recorded_features": [],
             "recorded_wp": [],
@@ -156,16 +155,23 @@ class SpacecraftIBMPVS(Node):
             "Vp_dot": [],
             "Vs_dot": [],
             "hybrid_duration": 0.0,  # duration of the hybrid control in seconds
-            
+            "full_docking_duration": 0.0,  # duration of the full docking in seconds
         }
-        self.dock_timer = perf_counter()  # Timer for docking
+
+        
+        # TIMER RELATED #
+        self.start_recording = False  # flag to start recording the statistics
+        self.pre_dock_timer = perf_counter()  # Timer for docking
+        self.start_full_docking_time = perf_counter()  # Timer for docking start
+        self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
+        self.pre_docked_time = 0  # Timer for pre-docking
+        self.pre_docked_time_threshold = 2  # time to stabilize the robot before docking (seconds)
+       
 
         self.aligning = False
         self.aligned = False  # flag to check if the robot is aligned
         self.markers_detected = False
         self.pre_docked = False
-        self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 2  # time to stabilize the robot before docking (seconds)
         self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
@@ -414,6 +420,8 @@ class SpacecraftIBMPVS(Node):
 
     def servo_srv_callback(self, request: SetHomePose, response: SetHomePose.Response):
         if request.align_mode:
+            self.start_docking_time = perf_counter()
+            self.start_recording = True
             self.update_setpoint(request)
             self.aligning = True
             self.get_logger().info("Starting homing mode")

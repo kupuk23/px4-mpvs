@@ -219,7 +219,7 @@ class SpacecraftVSMPC:
         Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[60e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[70e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # 0,
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
@@ -341,12 +341,10 @@ class SpacecraftVSMPC:
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 3 # how sharp the softmax is, 3.5 for softmax mode
+        k = 3  # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
-        softmax_p = cs.if_else(
-            Vp_dot > 0.02, 0, softmax_p
-        )
+        softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
         softmax_s = cs.exp(-k * Vs_dot)
         eps = 1e-5  # keeps denominator strictly positive
 
@@ -354,17 +352,7 @@ class SpacecraftVSMPC:
         w_s = softmax_s / (softmax_p + softmax_s + eps)
         w_p = 1.0 - w_s
 
-
-        #  sigmoid weights
-        # delta = Vs_dot - Vp_dot           # +ve ⇒ IBVS better
-        # cap   = cs.fmin(cs.fmax(k*delta, -40), 40)
-        # w_s    = 1 / (1 + cs.exp(cap))     # logistic
-        # w_p    = 1 - w_s
-
-        
-        
-
-
+        # Ratio method
         # Vs_dot = cs.if_else(
         #     Vs_dot >= 0, 0, Vs_dot
         # )
@@ -374,9 +362,11 @@ class SpacecraftVSMPC:
 
         V_dot = Vp_dot + Vs_dot
 
-        #convert to numpy arrays
+        # convert to numpy arrays
         w_s = w_s.full().flatten()
         w_p = w_p.full().flatten()
+        Vp_dot = Vp_dot.full().flatten()
+        Vs_dot = Vs_dot.full().flatten()
 
         # self.lyapunov_eval = cs.Function(
         #     "lyapunov_eval",
@@ -420,29 +410,30 @@ class SpacecraftVSMPC:
 
         x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
 
-        if hybrid_mode and not self.ibvs_mode:
-            L_val = self.model.L_f(x0[13:], Z)
-            s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
-            s_dot = s_dot.full().flatten()  # Convert to numpy array
+        L_val = self.model.L_f(x0[13:], Z)
+        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
+        s_dot = s_dot.full().flatten()  # Convert to numpy array
 
-            w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
-                self.define_lyapunov_weight(
-                    ocp_solver.get(0, "x"),
-                    x_ref,
-                    self.Qp_p,
-                    self.Qp_q,
-                    self.w_features,
-                    s_dot,
-                )
+        w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
+            self.define_lyapunov_weight(
+                ocp_solver.get(0, "x"),
+                x_ref,
+                self.Qp_p,
+                self.Qp_q,
+                self.w_features,
+                s_dot,
             )
+        )
+
+        if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            w_p = np.zeros(1)
-            w_s = np.ones(1) 
+            # w_p = np.zeros(1)
+            # w_s = np.ones(1)
             if w_p < 0.05:
-                self.ibvs_mode = True 
+                self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:
             w_p = np.zeros(1)
-            w_s = np.ones(1) 
+            w_s = np.ones(1)
         else:
             self.ibvs_mode = False
             s_dot = np.zeros(8)
@@ -499,4 +490,4 @@ class SpacecraftVSMPC:
             simU[i, :] = self.ocp_solver.get(i, "u")
         simX[N, :] = self.ocp_solver.get(N, "x")
 
-        return simU, simX, w_p, w_s
+        return simU, simX, w_p, w_s, Vp_dot, Vs_dot

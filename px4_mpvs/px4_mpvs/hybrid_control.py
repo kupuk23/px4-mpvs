@@ -78,12 +78,12 @@ def handle_hybrid_control(node):
     
     # Solve MPC
     if not node.aligned:
-        u_pred, x_pred, w_p,w_s = node.mpc.solve(
+        u_pred, x_pred, w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z
         )
 
     elif node.aligned and not node.pre_docked:
-        u_pred, x_pred,w_p,w_s = node.mpc.solve(
+        u_pred, x_pred,w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
         )  # TODO: add hybrid flag to use dynamic weight
 
@@ -107,18 +107,23 @@ def handle_hybrid_control(node):
             if elapsed_time > node.pre_docked_time_threshold:
                 print("Features are close enough, stopping servoing")
                 node.pre_docked = True
+                node.start_recording = False  # Stop recording after pre-docking
                 node.pre_docked_time = 0
-                node.dock_timer = perf_counter()  # Start the dock timer
+                node.pre_dock_timer = perf_counter()  # Start the dock timer
         else:
             node.pre_docked_time = 0
 
 
-    if not node.pre_docked:
+    if node.start_recording:
         w_p = float(w_p)
         w_s = float(w_s)
+        Vp_dot = float(Vp_dot)
+        Vs_dot = float(Vs_dot)
         # TODO: Add vs_dot and vp_dot to statistics
         node.statistics["recorded_wp"].append(w_p)
         node.statistics["recorded_ws"].append(w_s)
+        node.statistics["Vp_dot"].append(Vp_dot)
+        node.statistics["Vs_dot"].append(Vs_dot)
 
     t_stop = perf_counter()
         
@@ -129,14 +134,15 @@ def handle_hybrid_control(node):
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.dock_timer > 3:
+        if current_time - node.pre_dock_timer > 3:
             docking_duration = current_time - node.hybrid_start_time
             node.statistics["hybrid_duration"] = docking_duration
+            node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
             node.docked = True
             print("Docking completed in {:.2f} seconds".format(docking_duration))
             # save the statistics into pickle
             date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/hybrid_statistics_discrete({date}).pickle"
+            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/hybrid_statistics_softmax({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             
