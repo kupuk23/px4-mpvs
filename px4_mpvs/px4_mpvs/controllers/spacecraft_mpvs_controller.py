@@ -219,10 +219,10 @@ class SpacecraftVSMPC:
         Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[80e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[60e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # 0,
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[2e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+                *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
             ]
         )
 
@@ -436,8 +436,8 @@ class SpacecraftVSMPC:
                 )
             )
             # TEST DISCRETE
-            # w_p = np.zeros(1)
-            # w_s = np.ones(1) 
+            w_p = np.zeros(1)
+            w_s = np.ones(1) 
             if w_p < 0.05:
                 self.ibvs_mode = True 
         elif hybrid_mode and self.ibvs_mode:

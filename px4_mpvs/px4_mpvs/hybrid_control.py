@@ -136,7 +136,7 @@ def handle_hybrid_control(node):
             print("Docking completed in {:.2f} seconds".format(docking_duration))
             # save the statistics into pickle
             date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/hybrid_statistics_sigmoid({date}).pickle"
+            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/hybrid_statistics_discrete({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             
