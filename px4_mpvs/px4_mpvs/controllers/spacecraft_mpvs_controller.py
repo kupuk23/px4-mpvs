@@ -219,7 +219,7 @@ class SpacecraftVSMPC:
         Qs = np.diag(
             [
                 *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[65e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+                *[80e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
                 # 0,
                 *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
                 *[2e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
@@ -243,7 +243,7 @@ class SpacecraftVSMPC:
         S = (1.0 - w_p) * S_s
 
         Q_e = 20 * Q
-        S_e = 100 * S
+        S_e = 110 * S
 
         # TODO: debug the Q and S matrices in hybrid mode
 
@@ -332,7 +332,7 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 30
+        S = S * 25
 
         e_s = x[13:] - x_ref[13:]
 
@@ -341,7 +341,7 @@ class SpacecraftVSMPC:
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 3.5 # how sharp the softmax is, 3.5 for softmax mode
+        k = 3 # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(

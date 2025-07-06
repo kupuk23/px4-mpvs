@@ -165,13 +165,13 @@ class SpacecraftIBMPVS(Node):
         self.markers_detected = False
         self.pre_docked = False
         self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 1.5  # time to stabilize the robot before docking (seconds)
+        self.pre_docked_time_threshold = 2  # time to stabilize the robot before docking (seconds)
         self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.ibvs_e_threshold = 15
+        self.ibvs_e_threshold = 20
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
