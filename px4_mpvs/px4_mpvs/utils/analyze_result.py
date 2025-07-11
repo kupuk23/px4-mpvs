@@ -61,9 +61,22 @@ def main(results_dir):
 
 
     merged = flatten_dicts(dicts)
+    
     summary_df = summarize(merged)
-    plot_features(dicts[0]["recorded_features"], desired_points)
-    plot_weights(dicts[0]["recorded_wp"], dicts[0]["recorded_ws"])
+
+    # choose statistic with shortest "hybrid_duration"
+    hybrid_durations = np.array(merged["hybrid_duration"])
+    min_duration_index = np.argmin(hybrid_durations)
+    plot_features(dicts[min_duration_index]["recorded_features"], desired_points)
+    plot_weights(dicts[min_duration_index]["recorded_wp"], dicts[min_duration_index]["recorded_ws"], dicts[min_duration_index]["full_docking_duration"])
+
+    # plot lyapunovs
+    plot_weights(
+        dicts[min_duration_index]["Vp_dot"],
+        dicts[min_duration_index]["Vs_dot"],
+        dicts[min_duration_index]["full_docking_duration"],
+        lyapunov=True,
+    )
 
     print(f"\nLoaded {len(paths)} files:")
     for p in paths:
@@ -74,7 +87,7 @@ def main(results_dir):
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax"
+        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/ratio"
 
     )
     main(results_dir)

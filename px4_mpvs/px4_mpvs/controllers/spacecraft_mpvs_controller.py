@@ -352,13 +352,14 @@ class SpacecraftVSMPC:
         w_s = softmax_s / (softmax_p + softmax_s + eps)
         w_p = 1.0 - w_s
 
+
         # Ratio method
-        # Vs_dot = cs.if_else(
-        #     Vs_dot >= 0, 0, Vs_dot
-        # )
-        # w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
-        # # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
-        # w_s = 1.0 - w_p  # w_s is always non-negative
+        Vs_dot = cs.if_else(
+            Vs_dot >= 0, 0, Vs_dot
+        )
+        w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
+        w_s = 1.0 - w_p  # w_s is always non-negative
 
         V_dot = Vp_dot + Vs_dot
 
@@ -427,8 +428,9 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = np.zeros(1)
-            # w_s = np.ones(1)
+            w_p = np.zeros(1)
+            w_s = np.ones(1)
+            
             if w_p < 0.05:
                 self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:

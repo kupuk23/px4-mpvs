@@ -129,7 +129,7 @@ def handle_hybrid_control(node):
         
 
     mpc_time = t_stop - t_start
-    # node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
+    node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
 
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
@@ -142,7 +142,7 @@ def handle_hybrid_control(node):
             print("Docking completed in {:.2f} seconds".format(docking_duration))
             # save the statistics into pickle
             date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/hybrid_statistics_softmax({date}).pickle"
+            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             

@@ -69,7 +69,6 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 
 
-from std_srvs.srv import SetBool
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
 
@@ -84,8 +83,8 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
-        self.sitl = True
+        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.sitl = False
 
         self.aligning_threshold = 0.2
 
@@ -102,7 +101,7 @@ class SpacecraftIBMPVS(Node):
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -177,6 +176,7 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
+        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
         self.ibvs_e_threshold = 20
         
         self.tf_buffer = Buffer()
@@ -279,20 +279,23 @@ class SpacecraftIBMPVS(Node):
         self.markers_detected = True
 
     def vehicle_attitude_callback(self, msg):
-        self.vehicle_attitude[0] = msg.q[0]
-        self.vehicle_attitude[1] = msg.q[1]
-        self.vehicle_attitude[2] = -msg.q[2]
-        self.vehicle_attitude[3] = -msg.q[3]
+        # NED-> ENU transformation
+        # Receives quaternion in NED frame as (qw, qx, qy, qz)
+        q_enu = 1/np.sqrt(2) * np.array([msg.q[0] + msg.q[3], msg.q[1] + msg.q[2], msg.q[1] - msg.q[2], msg.q[0] - msg.q[3]])
+        q_enu /= np.linalg.norm(q_enu)
+        self.vehicle_attitude = q_enu.astype(float)
 
     def vehicle_local_position_callback(self, msg):
-        self.vehicle_local_position[0] = msg.x
-        self.vehicle_local_position[1] = -msg.y
+        # NED-> ENU transformation
+        self.vehicle_local_position[0] = msg.y
+        self.vehicle_local_position[1] = msg.x
         self.vehicle_local_position[2] = -msg.z
-        self.vehicle_local_velocity[0] = msg.vx
-        self.vehicle_local_velocity[1] = -msg.vy
+        self.vehicle_local_velocity[0] = msg.vy
+        self.vehicle_local_velocity[1] = msg.vx
         self.vehicle_local_velocity[2] = -msg.vz
 
     def vehicle_angular_velocity_callback(self, msg):
+        # NED-> ENU transformation
         self.vehicle_angular_velocity[0] = msg.xyz[0]
         self.vehicle_angular_velocity[1] = -msg.xyz[1]
         self.vehicle_angular_velocity[2] = -msg.xyz[2]

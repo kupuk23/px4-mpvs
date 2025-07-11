@@ -9,7 +9,10 @@ def plot_stats(statistics):
     plot_features(statistics["recorded_features"], statistics["desired_points"])
     plot_weights(statistics["recorded_wp"], statistics["recorded_ws"])
 
-def plot_weights(w_p, w_s):
+
+
+
+def plot_weights(w_p, w_s, duration=None, lyapunov=False):
     """
     Plot the weights w_p and w_s over time.
 
@@ -18,13 +21,19 @@ def plot_weights(w_p, w_s):
         w_s (np.ndarray): Weights for the spacecraft.
     """
     fig, ax = plt.subplots()
-    ax.plot(w_p, label="w_p", color="blue")
-    ax.plot(w_s, label="w_s", color="orange")
-    ax.set_xlabel("Time Step")
-    ax.set_ylabel("Weight Value")
+    time_steps = (
+        np.arange(len(w_p)) * duration / len(w_p)
+        if duration is not None
+        else np.arange(len(w_p))
+    )
+    ax.plot(time_steps, w_p, label="w_p" if not lyapunov else "Vp_dot", color="blue")
+    ax.plot(time_steps, w_s, label="w_s" if not lyapunov else "Vs_dot", color="orange")
+    ax.set_xlabel("Time (s)" if duration is not None else "Time Steps")
+    ax.set_ylabel("Weight Value" if not lyapunov else "Lyapunov Derivative Value")
     ax.legend()
-    plt.title("Weights Over Time")
+    plt.title("Weights Over Time" if not lyapunov else "Lyapunov derivative Over Time")
     plt.show()
+
 
 def plot_features(features, desired):
     """
@@ -62,7 +71,15 @@ def plot_features(features, desired):
     ax.scatter(p4[0, 0], p4[0, 1], c="y", marker="x", s=50, linewidths=1)
 
     # plot finishing points as big dots
-    ax.scatter(p1[-1, 0], p1[-1, 1], c="k", marker="o", s=30, linewidths=1, label="Final Features")
+    ax.scatter(
+        p1[-1, 0],
+        p1[-1, 1],
+        c="k",
+        marker="o",
+        s=30,
+        linewidths=1,
+        label="Final Features",
+    )
     ax.scatter(p2[-1, 0], p2[-1, 1], c="k", marker="o", s=30, linewidths=1)
     ax.scatter(p3[-1, 0], p3[-1, 1], c="k", marker="o", s=30, linewidths=1)
     ax.scatter(p4[-1, 0], p4[-1, 1], c="k", marker="o", s=30, linewidths=1)
@@ -72,7 +89,6 @@ def plot_features(features, desired):
     ax.scatter(p2_des[0], p2_des[1], c="c", marker="*", s=100)
     ax.scatter(p3_des[0], p3_des[1], c="c", marker="*", s=100)
     ax.scatter(p4_des[0], p4_des[1], c="c", marker="*", s=100)
-
 
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
@@ -85,15 +101,15 @@ def plot_features(features, desired):
 
 
 # if __name__ == "__main__":
-    # features = np.load("recorded_markers.npy", allow_pickle=True)
-    # desired_points = np.array(
-    #     [
-    #         [99, 186],
-    #         [535, 187],
-    #         [190, 394],
-    #         [481, 277],
-    #     ]
-    # ).flatten()
-    # load statistics from multiple pickle files
+# features = np.load("recorded_markers.npy", allow_pickle=True)
+# desired_points = np.array(
+#     [
+#         [99, 186],
+#         [535, 187],
+#         [190, 394],
+#         [481, 277],
+#     ]
+# ).flatten()
+# load statistics from multiple pickle files
 
-    # plot_features(features, desired_points)
+# plot_features(features, desired_points)
