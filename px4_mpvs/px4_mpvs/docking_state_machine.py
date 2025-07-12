@@ -14,7 +14,7 @@ from time import perf_counter
 import pickle
 import datetime
 
-def handle_hybrid_control(node):
+def docking_state_machine(node):
 
     # Publish odometry for SITL
     if node.sitl:

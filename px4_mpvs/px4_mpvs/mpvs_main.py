@@ -72,8 +72,7 @@ from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
 
-
-from px4_mpvs.hybrid_control import handle_hybrid_control
+from px4_mpvs.docking_state_machine import docking_state_machine
 
 from time import perf_counter
 
@@ -382,7 +381,7 @@ class SpacecraftIBMPVS(Node):
         return
 
     def cmdloop_callback(self):
-        handle_hybrid_control(self)
+        docking_state_machine(self)
         
         mode = Int8()
         mode.data = self.mode

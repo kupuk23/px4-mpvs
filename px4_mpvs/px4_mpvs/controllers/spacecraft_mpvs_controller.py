@@ -458,7 +458,7 @@ class SpacecraftVSMPC:
 
         # set initial state
         ocp_solver.set(0, "lbx", x0.flatten())
-        ocp_solver.set(0, "ubx", x0.flatten())
+        ocp_solver.set(0, "ubx", x0.flatten()) 
 
         status = ocp_solver.solve()
 
