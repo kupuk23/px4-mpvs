@@ -1,8 +1,6 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Pose
-import rclpy.parameter
-import rclpy.parameter_client
 from vs_msgs.srv import SetHomePose
 from vs_msgs.msg import ServoPoses
 from mpc_msgs.srv import SetPose
@@ -29,7 +27,7 @@ class VisualServo(Node):
     def __init__(self):
         super().__init__("visual_servo")
 
-        self.namespace = self.declare_parameter("namespace", "").value
+        self.namespace = self.declare_parameter("namespace", "pop").value
         self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Create a subscription to the pose topic
@@ -45,19 +43,19 @@ class VisualServo(Node):
 
         self.attitude_sub = self.create_subscription(
             VehicleAttitude,
-            f"/fmu/out/vehicle_attitude",
+            f"{self.namespace_prefix}/fmu/out/vehicle_attitude",
             self.vehicle_attitude_callback,
             qos_profile_sub,
         )
 
         self.local_position_sub = self.create_subscription(
             VehicleLocalPosition,
-            f"/fmu/out/vehicle_local_position",
+            f"{self.namespace_prefix}/fmu/out/vehicle_local_position",
             self.vehicle_local_position_callback,
             qos_profile_sub,
         )
 
-        self.goal_pub = self.create_publisher(ServoPoses, "/pbvs_pose", 10)
+        self.goal_pub = self.create_publisher(ServoPoses, f"{self.namespace_prefix}/pbvs_pose", 10)
         self.goal_posestamped_pub = self.create_publisher(
             PoseStamped, f"{self.namespace_prefix}/goal_pose_offset", 10)
 
@@ -116,10 +114,10 @@ class VisualServo(Node):
 
         # # spawn pose #1
         self.init_pos = np.array(
-            [-0.01404785, 1.36248684, 0.0]
+            [1.36114323, -0.23419029, 0.0]
         )  # inverted z and y axis
         self.init_att = np.array(
-            [8.92433882e-01, -5.40154197e-08, 4.97020096e-08, -4.51177984e-01]
+            [6.68084145e-01, 8.91955807e-08, 6.40660858e-10, 7.44085729e-01]
         )
 
         # [ 0.11974171 -1.50361025  0.35518408] [ 8.64499688e-01  7.21904883e-08 -3.61660879e-09  5.02633214e-01]
@@ -131,10 +129,10 @@ class VisualServo(Node):
         # )
 
         # Spawn pose Reversed
-        self.init_pos = np.array([1.56462193e-07, 1.405, 0])
-        self.init_att = np.array(
-            [2.17068925e-01, 1.25027753e-07, -2.44279164e-07, 9.76156294e-01]
-        )
+        # self.init_pos = np.array([1.56462193e-07, 1.405, 0])
+        # self.init_att = np.array(
+        #     [2.17068925e-01, 1.25027753e-07, -2.44279164e-07, 9.76156294e-01]
+        # )
 
         self.param_client = self.create_client(
             SetParameters, "pose_estimation_pcl/set_parameters"
@@ -147,7 +145,7 @@ class VisualServo(Node):
             )
             return
 
-        # self.move_robot(self.init_pos, self.init_att)
+        self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.aligning_callback)
 
@@ -203,6 +201,7 @@ class VisualServo(Node):
             self.vehicle_attitude, goal_orientation
         )
 
+        #TODO : FIX ORIENTATION ERROR CALCULATION BASED ON QUATERNIONS
         print(f"position error: {position_err:.2f} m")
         print(f"orientation error: {orientation_err:.2f} degrees")
 
@@ -436,18 +435,26 @@ class VisualServo(Node):
             self.get_logger().error(f"Service call failed: {e}")
 
     def vehicle_attitude_callback(self, msg):
-        self.vehicle_attitude[0] = msg.q[0]
-        self.vehicle_attitude[1] = msg.q[1]
-        self.vehicle_attitude[2] = -msg.q[2]
-        self.vehicle_attitude[3] = -msg.q[3]
+        # NED-> ENU transformation
+        # Receives quaternion in NED frame as (qw, qx, qy, qz)
+        q_enu = 1/np.sqrt(2) * np.array([msg.q[0] + msg.q[3], msg.q[1] + msg.q[2], msg.q[1] - msg.q[2], msg.q[0] - msg.q[3]])
+        q_enu /= np.linalg.norm(q_enu)
+        self.vehicle_attitude = q_enu.astype(float)
 
     def vehicle_local_position_callback(self, msg):
-        self.vehicle_local_position[0] = msg.x
-        self.vehicle_local_position[1] = -msg.y
+        # NED-> ENU transformation
+        self.vehicle_local_position[0] = msg.y
+        self.vehicle_local_position[1] = msg.x
         self.vehicle_local_position[2] = -msg.z
-        self.vehicle_local_velocity[0] = msg.vx
-        self.vehicle_local_velocity[1] = -msg.vy
+        self.vehicle_local_velocity[0] = msg.vy
+        self.vehicle_local_velocity[1] = msg.vx
         self.vehicle_local_velocity[2] = -msg.vz
+
+    def vehicle_angular_velocity_callback(self, msg):
+        # NED-> ENU transformation
+        self.vehicle_angular_velocity[0] = msg.xyz[0]
+        self.vehicle_angular_velocity[1] = -msg.xyz[1]
+        self.vehicle_angular_velocity[2] = -msg.xyz[2]
 
 
 def main():

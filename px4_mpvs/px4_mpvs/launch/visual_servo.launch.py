@@ -36,12 +36,46 @@ __author__ = "Pedro Roque, Jaeyoung Lim"
 __contact__ = "padr@kth.se, jalim@ethz.ch"
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument,OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition, UnlessCondition
+from launch.condition import Condition
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
+import tempfile
+
+
+class NamespaceEmptyCondition(Condition):
+    """Custom condition to check if namespace is empty"""
+    def __init__(self, namespace_config):
+        self.namespace_config = namespace_config
+
+    def evaluate(self, context):
+        namespace = self.namespace_config.perform(context)
+        return namespace == ''
+
+
+class NamespaceNotEmptyCondition(Condition):
+    """Custom condition to check if namespace is not empty"""
+    def __init__(self, namespace_config):
+        self.namespace_config = namespace_config
+
+    def evaluate(self, context):
+        namespace = self.namespace_config.perform(context)
+        return namespace != ''
+
+
+def namespace_is_empty_condition(context):
+    """Custom condition to check if namespace is empty"""
+    namespace = LaunchConfiguration('namespace').perform(context)
+    return namespace == ''
+
+
+def namespace_is_not_empty_condition(context):
+    """Custom condition to check if namespace is not empty"""
+    namespace = LaunchConfiguration('namespace').perform(context)
+    return namespace != ''
 
 
 def generate_launch_description():
@@ -79,31 +113,31 @@ def generate_launch_description():
         namespace_arg,
         setpoint_from_rviz_arg,
         use_sim_time_arg,
-        # Node(
-        #     package='px4_mpvs',
-        #     namespace=namespace,
-        #     executable='mpvs_main', #mpvs_spacecraft
-        #     name='mpvs_main', #mpvs_spacecraft
-        #     output='screen',
-        #     emulate_tty=True,
-        #     parameters=[
-        #         {'mode': mode},
-        #         {'namespace': namespace},
-        #         {'setpoint_from_rviz': setpoint_from_rviz},
-        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
-        #     ]
-        # ),
-        Node(package='px4_mpvs',
+        Node(
+            package='px4_mpvs',
             namespace=namespace,
-            executable='features_detector_node',
-            name='features_detector_node',
-            # output='screen',
+            executable='mpvs_main', #mpvs_spacecraft
+            name='mpvs_main', #mpvs_spacecraft
+            output='screen',
             emulate_tty=True,
             parameters=[
+                {'mode': mode},
                 {'namespace': namespace},
+                {'setpoint_from_rviz': setpoint_from_rviz},
                 {'use_sim_time': LaunchConfiguration("use_sim_time")},
             ]
         ),
+        # Node(package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='features_detector_node',
+        #     name='features_detector_node',
+        #     # output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'namespace': namespace},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ]
+        # ),
 
         Node(
             package='px4_mpc',
@@ -119,32 +153,32 @@ def generate_launch_description():
             condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
         ),
         
-        Node(
-            package='px4_mpvs',
-            namespace=namespace,
-            executable='test_pose_camera',
-            name='test_pose_camera',
-            # output='screen',
-            emulate_tty=True,
-            parameters=[
-                {'namespace': namespace},
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ],
-            condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
-        ),
-        Node(
-            package='px4_mpc',
-            namespace=namespace,
-            executable='test_setpoints',
-            name='test_setpoints',
-            output='screen',
-            emulate_tty=True,
-            parameters=[
-                {'namespace': namespace},
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ],
-            condition=UnlessCondition(LaunchConfiguration('setpoint_from_rviz'))
-        ),
+        # Node(
+        #     package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='test_pose_camera',
+        #     name='test_pose_camera',
+        #     # output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'namespace': namespace},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ],
+        #     condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
+        # ),
+        # Node(
+        #     package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='test_setpoints',
+        #     name='test_setpoints',
+        #     output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'namespace': namespace},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ],
+        #     condition=UnlessCondition(LaunchConfiguration('setpoint_from_rviz'))
+        # ),
         
         Node(
             package='px4_offboard',
@@ -157,15 +191,53 @@ def generate_launch_description():
             ],
             condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
         ),
+        
+        # Simple RViz node without namespace patching (when namespace is empty)
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            name='rviz2',
+            condition=NamespaceEmptyCondition(LaunchConfiguration('namespace'))
+        ),
+        
+        # OpaqueFunction for namespace patching (when namespace is provided)
+        OpaqueFunction(
+            function=launch_setup,
+            condition=NamespaceNotEmptyCondition(LaunchConfiguration('namespace'))
+        ),
+    ])
+
+def patch_rviz_config(original_config_path, namespace):
+    """
+    Patch the RViz configuration file to replace the namespace placeholder with the actual namespace.
+    """
+    with open(original_config_path, 'r') as f:
+        content = f.read()
+
+    # Replace placeholder with actual namespace
+    content = content.replace('__NS__', f'/{namespace}' if namespace else '')
+    
+    # Write to temporary file
+    tmp_rviz_config = tempfile.NamedTemporaryFile(delete=False, suffix='.rviz')
+    tmp_rviz_config.write(content.encode('utf-8'))
+    tmp_rviz_config.close()
+
+    return tmp_rviz_config.name
+
+def launch_setup(context, *args, **kwargs):
+    """
+    Function to set up the launch context and patch the RViz configuration.
+    """
+    namespace = LaunchConfiguration('namespace').perform(context)
+    rviz_config_path = os.path.join(get_package_share_directory('px4_mpvs'), 'config_new.rviz')
+    patched_config = patch_rviz_config(rviz_config_path, namespace)
+
+    return [
         Node(
             package='rviz2',
             namespace='',
             executable='rviz2',
             name='rviz2',
-            parameters=[
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ],
-            arguments=['-d', os.path.join(get_package_share_directory('px4_mpvs'), 'config.rviz')],
-            condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
-        ),
-    ])
+            arguments=['-d', patched_config]
+        )
+    ]
