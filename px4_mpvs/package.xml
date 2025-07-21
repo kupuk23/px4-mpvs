@@ -13,7 +13,7 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>px4_offboard</depend>
-  <depend>cv2</depend>
+  <depend>python3-opencv</depend>
   <depend>tf_transformations</depend>
   
   <exec_depend>ros2launch</exec_depend>
