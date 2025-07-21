@@ -31,6 +31,8 @@ setup(
             'test_missalignment = px4_mpvs.test.test_missalignment:main',
             'test_pose_camera = px4_mpvs.test.test_pose_camera:main',
             'features_detector_node = px4_mpvs.features_detector_node:main',
+            'test_setpoints = px4_mpvs.test.test_setpoints:main',
+            'rviz_pos_marker = px4_mpvs.rviz_pos_marker:main',
         ],
     },
 )

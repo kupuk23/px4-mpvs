@@ -100,7 +100,7 @@ class SpacecraftIBMPVS(Node):
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -138,8 +138,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([1.5, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
+        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -183,12 +183,6 @@ class SpacecraftIBMPVS(Node):
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
-        # self.object_pose_sub = self.create_subscription(
-        #     PoseStamped,
-        #     '/pose/icp_result',  # Topic for object pose
-        #     self.object_pose_callback,
-        #     10
-        # )
 
         self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
 

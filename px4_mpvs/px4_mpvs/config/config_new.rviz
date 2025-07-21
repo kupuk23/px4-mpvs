@@ -14,7 +14,7 @@ Panels:
         - /TF1
         - /TF1/Frames1
         - /goal_pose1
-        - /Pose2
+        - /Image1/Topic1
       Splitter Ratio: 0.5029411911964417
     Tree Height: 604
   - Class: rviz_common/Selection
@@ -69,7 +69,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: __NS__/px4_visualizer/vehicle_pose
+        Value: /pop/px4_visualizer/vehicle_pose
       Value: true
     - Alpha: 1
       Buffer Length: 1
@@ -97,7 +97,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: __NS__/px4_visualizer/vehicle_path
+        Value: /pop/px4_visualizer/vehicle_path
       Value: true
     - Alpha: 1
       Buffer Length: 1
@@ -125,12 +125,12 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: __NS__/px4_mpc/predicted_path
+        Value: /pop/px4_mpc/predicted_path
       Value: true
     - Class: rviz_default_plugins/InteractiveMarkers
       Enable Transparency: true
       Enabled: true
-      Interactive Markers Namespace: __NS__/rviz_target_pose_marker
+      Interactive Markers Namespace: /pop/rviz_target_pose_marker
       Name: InteractiveMarkers
       Show Axes: true
       Show Descriptions: true
@@ -140,14 +140,14 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        {}
+        arrow: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: __NS__/px4_mpc/reference
+        Value: /pop/px4_mpc/reference
       Value: true
     - Alpha: 1
       Autocompute Intensity Bounds: true
@@ -251,7 +251,7 @@ Visualization Manager:
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/Pose
       Color: 28; 113; 216
-      Enabled: false
+      Enabled: true
       Head Length: 1
       Head Radius: 0.10000000149011612
       Name: goal_pose
@@ -265,13 +265,13 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /goal_pose_offset
-      Value: false
+      Value: true
     - Alpha: 1
       Axes Length: 1
       Axes Radius: 0.10000000149011612
       Class: rviz_default_plugins/Pose
       Color: 248; 228; 92
-      Enabled: true
+      Enabled: false
       Head Length: 0
       Head Radius: 0
       Name: Pose
@@ -285,7 +285,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /pose_debug
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/Image
       Enabled: false
       Max Value: 1
@@ -298,7 +298,7 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /camera/image
+        Value: /zed/zed_node/left/image_rect_color
       Value: false
   Enabled: true
   Global Options:
