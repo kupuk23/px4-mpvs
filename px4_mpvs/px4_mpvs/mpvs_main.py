@@ -87,9 +87,9 @@ class SpacecraftIBMPVS(Node):
 
         self.aligning_threshold = 0.2
 
-        self.camera_frame_id = self.declare_parameter(
-            "camera_frame_id", "camera_link"
-        ).value
+        # self.camera_frame_id = self.declare_parameter(
+        #     "camera_frame_id", "camera_link"
+        # ).value
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
@@ -100,7 +100,7 @@ class SpacecraftIBMPVS(Node):
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -138,8 +138,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        self.setpoint_position = np.array([1.5, 0.0, 0.0])  # inverted z and y axis
+        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])

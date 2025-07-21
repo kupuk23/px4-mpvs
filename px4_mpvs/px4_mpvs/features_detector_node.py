@@ -2,15 +2,10 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Int8
 from std_srvs.srv import SetBool
-from sensor_msgs.msg import Image, CompressedImage
-from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image, CompressedImage  
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
-from scipy.linalg import pinv
-from ibvs_testing.detect_features import detect_circle_features, detect_lines
-from rclpy.executors import MultiThreadedExecutor
-from rclpy.callback_groups import ReentrantCallbackGroup
 
 from px4_mpvs.marker_detector_blob import CircleFeatureDetector
 
