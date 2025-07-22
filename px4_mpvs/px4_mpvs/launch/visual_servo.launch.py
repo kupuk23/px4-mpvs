@@ -163,11 +163,11 @@ def generate_launch_description():
         ),
         
         # Simple RViz node without namespace patching (when namespace is empty)
-        Node(
-            package='rviz2',
-            executable='rviz2',
-            name='rviz2'
-        ),
+        # Node(
+        #     package='rviz2',
+        #     executable='rviz2',
+        #     name='rviz2'
+        # ),
         
         # OpaqueFunction for namespace patching (when namespace is provided)
         # OpaqueFunction(

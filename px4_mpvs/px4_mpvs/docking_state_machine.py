@@ -125,11 +125,9 @@ def docking_state_machine(node):
         node.statistics["Vp_dot"].append(Vp_dot)
         node.statistics["Vs_dot"].append(Vs_dot)
 
-    t_stop = perf_counter()
         
-
-    mpc_time = t_stop - t_start
-    # node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
+    
+    # node.get_logger().info(f"MPC update freq = {(1 / (perf_counter() - t_start)):.2f} Hz")
 
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked

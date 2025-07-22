@@ -6,7 +6,7 @@ from itertools import combinations, permutations
 import os
 import matplotlib
 
-matplotlib.use("TkAgg")  # Use a non-interactive backend
+# matplotlib.use("Agg")  # Use a non-interactive backend
 
 
 img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/docked_image_v3.jpg"
@@ -21,9 +21,9 @@ class CircleFeatureDetector:
 
     def __init__(
         self,
-        min_circle_radius=5,
+        min_circle_radius=20,
         max_circle_radius=50,
-        circularity_threshold=0.8,
+        circularity_threshold=0.99,
         match_threshold=10.0,
         visualize=False,
         debug=False,
@@ -46,19 +46,20 @@ class CircleFeatureDetector:
         self.match_threshold = match_threshold
 
         self.params = cv2.SimpleBlobDetector_Params()
-        self.params.filterByArea = False
+        self.params.filterByArea = True
         self.params.minArea = min_circle_radius
         self.params.maxArea = max_circle_radius
 
-        self.params.filterByColor = False
+        self.params.filterByColor = True
+        self.params.blobColor = 0  # Detect black blobs
         self.params.minThreshold = 0
-        self.params.maxThreshold = 255
+        self.params.maxThreshold = 50
 
-        self.params.filterByCircularity = False
+        self.params.filterByCircularity = True
         self.params.minCircularity = circularity_threshold
         self.params.maxCircularity = 1.2
 
-        self.params.filterByConvexity = False
+        self.params.filterByConvexity = True
         self.params.minConvexity = 0.8
 
         self.params.filterByInertia = False
@@ -76,6 +77,7 @@ class CircleFeatureDetector:
         self.reference_img = None
         self.target_points = None
         self.ref_visualization = None
+        self.matched_centers = None
 
         if self.debug:
             print("CircleFeatureDetector initialized")
@@ -115,7 +117,7 @@ class CircleFeatureDetector:
 
         hsv = cv2.cvtColor(img_blur, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(
-            hsv, (0, 0, 0), (200, 255, 40)  # only accept low V
+            hsv, (30, 100, 0), (160, 255, 40)  # only accept low V
         ) 
 
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
@@ -136,24 +138,23 @@ class CircleFeatureDetector:
         circle_centers = cv2.KeyPoint_convert(kp)
 
         # If visualization is enabled, draw the circles that were found
-        # if self.visualize:
-        #     # Visualize the blobbed image with circles
+        if self.visualize:
+            # Visualize the blobbed image with circles
 
-        #     cv2.putText(
-        #         img_with_keypoints,
-        #         f"Found {len(circle_centers)} circles",
-        #         (20, 30),
-        #         cv2.FONT_HERSHEY_SIMPLEX,
-        #         0.7,
-        #         (0, 255, 255),
-        #         2,
-        #     )
+            cv2.putText(
+                img_with_keypoints,
+                f"Found {len(circle_centers)} circles",
+                (20, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 255, 255),
+                2,
+            )
 
         # Show intermediate processing steps for debugging
-        # cv2.imshow("Keypoints", img_with_keypoints)
-        # cv2.imshow("Masked Image", mask)
+        cv2.imshow("Keypoints", img_with_keypoints)
+        cv2.imshow("Masked Image", mask)
 
-        # cv2.imshow(self.window_name, viz_img)
 
         # We need exactly 4 circles
         if len(circle_centers) < 4:
@@ -162,12 +163,13 @@ class CircleFeatureDetector:
             return None, img
 
         # If more than 4 circles, match with target points
-        matched_centers = self._match_circles(circle_centers, self.target_points)
-        if matched_centers is not None:
-            ordered_centers = self._order_circles(matched_centers)
+        # self.matched_centers = self._match_circles(circle_centers, self.target_points)
+        if self.matched_centers is not None:
+            ordered_centers = self._order_circles(self.matched_centers)
         else:
             # If matching failed, use default ordering with all detected circles
-            ordered_centers = self._order_circles(circle_centers[:4])
+            # ordered_centers = self._order_circles(circle_centers[:4])
+            ordered_centers = np.array(circle_centers[:4], dtype=np.float32)
             if self.debug:
                 print("Matching failed, using default ordering")
 

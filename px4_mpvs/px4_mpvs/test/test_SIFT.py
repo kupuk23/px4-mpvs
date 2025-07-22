@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')  # Use a non-interactive backend
+matplotlib.use('Agg')  # Use a non-interactive backend
 import matplotlib.pyplot as plt
 
 def detect_markers(reference_img_path, test_img_path, visualization=True, debug=False):

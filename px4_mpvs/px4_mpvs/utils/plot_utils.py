@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib
 
-matplotlib.use("TkAgg")  # Use TkAgg backend for interactive plotting
+matplotlib.use("Agg")  # Use TkAgg backend for interactive plotting
 
 
 def plot_stats(statistics):

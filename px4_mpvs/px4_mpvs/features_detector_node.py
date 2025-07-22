@@ -6,23 +6,33 @@ from sensor_msgs.msg import Image, CompressedImage
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
+from rclpy.qos import (
+    QoSProfile,
+    QoSHistoryPolicy,
+    QoSReliabilityPolicy,
+)
+from rclpy.duration import Duration
 
 from px4_mpvs.marker_detector_blob import CircleFeatureDetector
 
-import matplotlib
+# import matplotlib
 
-matplotlib.use("TkAgg")  # Use TkAgg backend for matplotlib
+# matplotlib.use("Agg")  # Use TkAgg backend for matplotlib
 
 
 class MarkerDetectorNode(Node):
     def __init__(self):
+
+        qos = QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE)
+
         super().__init__("marker_detector_node")
         self.bridge = CvBridge()
 
+        self.save_image = False
         # Get parameters
-
+    
         self.debug = self.declare_parameter("debug", True).value
-        self.visualize = self.declare_parameter("visualize", False).value
+        self.visualize = self.declare_parameter("visualize", True).value
         self.namespace = self.declare_parameter("namespace", "").value
         self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
@@ -37,21 +47,22 @@ class MarkerDetectorNode(Node):
 
         self.image_sub = self.create_subscription(
             CompressedImage,
-            f"{self.namespace_prefix}/camera/image/compressed",
+            # f"{self.namespace_prefix}/camera/image/compressed",
+            "/zed/zed_node/rgb/image_rect_color/compressed",
             self.image_callback,
-            10,
-        )
+            qos)
 
         self.depth_sub = self.create_subscription(
             Image,
-            f"{self.namespace_prefix}/camera/depth_image",
+            # f"{self.namespace_prefix}/camera/depth_image",
+            "/zed/zed_node/depth/depth_registered",
             self.depth_callback,
-            10,
+            10
         )
 
-        self.srv = self.create_service(
-            SetBool, f"{self.namespace_prefix}/enable_ibvs", self.enable_ibvs_callback
-        )
+        # self.srv = self.create_service(
+        #     SetBool, f"{self.namespace_prefix}/enable_ibvs", self.enable_ibvs_callback
+        # )
 
         self.markers_pub = self.create_publisher(
             Float32MultiArray, f"{self.namespace_prefix}/detected_markers", 10
@@ -68,9 +79,9 @@ class MarkerDetectorNode(Node):
         # self.get_logger().info(f'Initializing marker detector with reference image: {reference_image_}')
         # self.detector = CircleMarkerDetector(reference_image_, expected_markers=4, debug=self.debug, vis_debug=self.debug )
         self.detector = CircleFeatureDetector(
-            min_circle_radius=5,
+            min_circle_radius=10,
             max_circle_radius=100,
-            circularity_threshold=0.9,
+            circularity_threshold=0.80,
             match_threshold=5.0,
             visualize=self.visualize,
             debug=self.debug,
@@ -88,6 +99,8 @@ class MarkerDetectorNode(Node):
 
         # Set target points in the detector
         self.detector.set_target_points(self.target_points)
+
+        print(f"MarkerDetectorNode initialized with namespace: {self.namespace}")
 
     #     if self.visualize:
     #         self.create_timer(0.05, self.update_gui)
@@ -113,21 +126,21 @@ class MarkerDetectorNode(Node):
             self.mode = "IBVS"
             self.mode_color = (255, 0, 0)  # Red for IBVS
 
-    def enable_ibvs_callback(self, request, response):
-        """Service callback to enable/disable IBVS control"""
-        self.ibvs_enabled = request.data
+    # def enable_ibvs_callback(self, request, response):
+    #     """Service callback to enable/disable IBVS control"""
+    #     self.ibvs_enabled = request.data
 
-        if self.ibvs_enabled:
-            self.get_logger().info("IBVS control enabled")
-            response.message = "IBVS control enabled"
-        else:
-            self.get_logger().info("IBVS control disabled")
-            # Send zero velocity to stop the robot
-            self.stop_robot()
-            response.message = "IBVS control disabled"
+    #     if self.ibvs_enabled:
+    #         self.get_logger().info("IBVS control enabled")
+    #         response.message = "IBVS control enabled"
+    #     else:
+    #         self.get_logger().info("IBVS control disabled")
+    #         # Send zero velocity to stop the robot
+    #         self.stop_robot()
+    #         response.message = "IBVS control disabled"
 
-        response.success = True
-        return response
+    #     response.success = True
+    #     return response
 
     def depth_callback(self, msg: Image):
         # Convert the depth image to a numpy array
@@ -140,6 +153,13 @@ class MarkerDetectorNode(Node):
         # Process the image and detect markers
         try:
             image = self.bridge.compressed_imgmsg_to_cv2(msg, "bgr8")
+
+            if self.save_image:
+                cv2.imwrite("/home/discower/tafarrel_ws/src/px4-mpvs/px4_mpvs/resource/test_image.jpg", image)
+
+            # DISPLAY IMAGE FOR DEBUGGING
+            
+
             # Detect circles
             markers, viz_img = self.detector.detect(image)
 
@@ -208,7 +228,7 @@ class MarkerDetectorNode(Node):
                 cv2.waitKey(1)
 
         except Exception as e:
-            # self.get_logger().error(f"Error processing image: {str(e)}")
+            self.get_logger().error(f"Error processing image: {str(e)}")
             pass
 
 

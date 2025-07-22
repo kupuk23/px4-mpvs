@@ -42,15 +42,23 @@ class SpacecraftVSModel:
 
         self.name = "spacecraft_mpvs_model"
 
-        # Camera intrinsic parameters
+        # Camera intrinsic parameters (FOR SIMULATION)
+        # self.K = np.array(
+        #     [
+        #         [500.0, 0.0, 320.0],  # fx, 0, cx
+        #         [0.0, 500.0, 240.0],  # 0, fy, cy
+        #         [0.0, 0.0, 1.0],  # 0, 0, 1
+        #     ]
+        # )
+
         self.K = np.array(
             [
-                [500.0, 0.0, 320.0],  # fx, 0, cx
-                [0.0, 500.0, 240.0],  # 0, fy, cy
+                [358.5673522949219, 0.0, 321.3287353515625],  # fx, 0, cx
+                [0.0, 358.5673522949219, 168.1827850341797],  # 0, fy, cy
                 [0.0, 0.0, 1.0],  # 0, 0, 1
             ]
         )
-        self.K = cs.DM(self.K)  # Convert to CasADi DM for compatibility
+        self.K = cs.DM(self.K) 
 
         # constants
         self.mass = 16.8
