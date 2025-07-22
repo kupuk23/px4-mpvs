@@ -140,7 +140,7 @@ Visualization Manager:
       Enabled: true
       Name: Marker
       Namespaces:
-        arrow: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -190,8 +190,6 @@ Visualization Manager:
         All Enabled: false
         map:
           Value: true
-        moving_frame:
-          Value: false
         robot_base_imu:
           Value: true
         zed_camera_center:
@@ -213,8 +211,6 @@ Visualization Manager:
       Show Names: false
       Tree:
         map:
-          moving_frame:
-            {}
           robot_base_imu:
             zed_camera_link:
               zed_camera_center:

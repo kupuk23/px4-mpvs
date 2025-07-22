@@ -46,36 +46,6 @@ import os
 import tempfile
 
 
-class NamespaceEmptyCondition(Condition):
-    """Custom condition to check if namespace is empty"""
-    def __init__(self, namespace_config):
-        self.namespace_config = namespace_config
-
-    def evaluate(self, context):
-        namespace = self.namespace_config.perform(context)
-        return namespace == ''
-
-
-class NamespaceNotEmptyCondition(Condition):
-    """Custom condition to check if namespace is not empty"""
-    def __init__(self, namespace_config):
-        self.namespace_config = namespace_config
-
-    def evaluate(self, context):
-        namespace = self.namespace_config.perform(context)
-        return namespace != ''
-
-
-def namespace_is_empty_condition(context):
-    """Custom condition to check if namespace is empty"""
-    namespace = LaunchConfiguration('namespace').perform(context)
-    return namespace == ''
-
-
-def namespace_is_not_empty_condition(context):
-    """Custom condition to check if namespace is not empty"""
-    namespace = LaunchConfiguration('namespace').perform(context)
-    return namespace != ''
 
 
 def generate_launch_description():
@@ -127,17 +97,17 @@ def generate_launch_description():
                 {'use_sim_time': LaunchConfiguration("use_sim_time")},
             ]
         ),
-        # Node(package='px4_mpvs',
-        #     namespace=namespace,
-        #     executable='features_detector_node',
-        #     name='features_detector_node',
-        #     # output='screen',
-        #     emulate_tty=True,
-        #     parameters=[
-        #         {'namespace': namespace},
-        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
-        #     ]
-        # ),
+        Node(package='px4_mpvs',
+            namespace=namespace,
+            executable='features_detector_node',
+            name='features_detector_node',
+            # output='screen',
+            emulate_tty=True,
+            parameters=[
+                {'namespace': namespace},
+                {'use_sim_time': LaunchConfiguration("use_sim_time")},
+            ]
+        ),
 
         Node(
             package='px4_mpc',
@@ -166,19 +136,19 @@ def generate_launch_description():
         #     ],
         #     condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
         # ),
-        # Node(
-        #     package='px4_mpvs',
-        #     namespace=namespace,
-        #     executable='test_setpoints',
-        #     name='test_setpoints',
-        #     output='screen',
-        #     emulate_tty=True,
-        #     parameters=[
-        #         {'namespace': namespace},
-        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
-        #     ],
-        #     condition=UnlessCondition(LaunchConfiguration('setpoint_from_rviz'))
-        # ),
+        Node(
+            package='px4_mpvs',
+            namespace=namespace,
+            executable='test_setpoints',
+            name='test_setpoints',
+            output='screen',
+            emulate_tty=True,
+            parameters=[
+                {'namespace': namespace},
+                {'use_sim_time': LaunchConfiguration("use_sim_time")},
+            ],
+            condition=UnlessCondition(LaunchConfiguration('setpoint_from_rviz'))
+        ),
         
         Node(
             package='px4_offboard',
@@ -196,15 +166,14 @@ def generate_launch_description():
         Node(
             package='rviz2',
             executable='rviz2',
-            name='rviz2',
-            condition=NamespaceEmptyCondition(LaunchConfiguration('namespace'))
+            name='rviz2'
         ),
         
         # OpaqueFunction for namespace patching (when namespace is provided)
-        OpaqueFunction(
-            function=launch_setup,
-            condition=NamespaceNotEmptyCondition(LaunchConfiguration('namespace'))
-        ),
+        # OpaqueFunction(
+        #     function=launch_setup,
+        #     condition=NamespaceNotEmptyCondition(LaunchConfiguration('namespace'))
+        # ),
     ])
 
 def patch_rviz_config(original_config_path, namespace):

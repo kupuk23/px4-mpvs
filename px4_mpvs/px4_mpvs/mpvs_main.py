@@ -82,7 +82,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = False
 
         self.aligning_threshold = 0.2
