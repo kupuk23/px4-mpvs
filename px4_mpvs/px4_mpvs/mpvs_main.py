@@ -82,7 +82,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.build = True  # Set to False after the first run to avoid rebuilding
         self.sitl = False
 
         self.aligning_threshold = 0.2
@@ -93,14 +93,18 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [[82, 123], [563, 123], [176, 337], [505, 218]]
+            [[64, 158],
+                [287, 182],
+                [119, 309],
+                [497, 258],
+            ]
         ).flatten()
 
         
 
         # Get namespace
-        self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
+        self.namespace = self.declare_parameter("namespace", "pop").value
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -138,12 +142,17 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        # self.setpoint_position = np.array([2.0, 0.0, 0.0]) 
+        # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
+
+        # setpoint for docking #
+        self.setpoint_position = np.array([1.36114323, -0.23419029, 0.0])
+        self.setpoint_attitude = np.array([6.68084145e-01, 8.91955807e-08, 6.40660858e-10, 7.44085729e-01])
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
+        self.old_Z = np.array([1.0, 1.0, 1.0, 1.0])  # old Z coordinates of the markers
         self.statistics = {
             "recorded_features": [],
             "recorded_wp": [],
@@ -187,7 +196,7 @@ class SpacecraftIBMPVS(Node):
         self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
 
         self.markers_sub = self.create_subscription(
-            Float32MultiArray, "/detected_markers", self.marker_callback, 10
+            Float32MultiArray, f"{self.namespace_prefix}/detected_markers", self.marker_callback, 10
         )
 
         self.status_sub = self.create_subscription(
@@ -268,6 +277,14 @@ class SpacecraftIBMPVS(Node):
         points_3d = np.array(msg.data).reshape(-1, 3)
         self.p_markers = points_3d[:, 0:2].astype(np.int16).flatten()
         self.Z = points_3d[:, 2].astype(np.float16)
+
+        # check if all Z is non zero, otherwise, use previous values FOR THE ZEROS ELEMENT
+        if np.any(self.Z == 0):
+            self.get_logger().warn("Some Z values are zero, using previous values")
+            for i in range(len(self.Z)):
+                self.Z[i] = self.old_Z[i] if self.Z[i] == 0 else self.Z[i]
+        else:
+            self.old_Z = self.Z.copy()
 
         self.markers_detected = True
 
