@@ -1,0 +1,3 @@
+# HSV Configuration
+hsv_lower = [0, 21, 0]
+hsv_upper = [179, 189, 100]

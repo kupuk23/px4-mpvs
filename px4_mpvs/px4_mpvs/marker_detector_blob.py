@@ -9,7 +9,7 @@ import matplotlib
 # matplotlib.use("Agg")  # Use a non-interactive backend
 
 
-img_path = "/home/discower/tafarrel_ws/src/px4-mpvs/px4_mpvs/resource/docked_image_hw.jpg"
+img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/docked_image_hw.jpg"
 
 
 
@@ -60,7 +60,7 @@ class CircleFeatureDetector:
         self.params.minConvexity = 0.95
 
         self.params.filterByInertia = True
-        self.params.minInertiaRatio = 0.72
+        self.params.minInertiaRatio = 0.75
 
         self.params.minDistBetweenBlobs = 10
 
@@ -77,8 +77,8 @@ class CircleFeatureDetector:
         self.matched_centers = None
 
         # HSV threshold parameters for real-time tuning
-        self.hsv_lower = [0, 21, 0]
-        self.hsv_upper = [179, 189, 84]
+        self.hsv_lower = [0, 0, 0]
+        self.hsv_upper = [179, 153, 101]
         
         # Create trackbars for HSV tuning if visualization is enabled
         if self.visualize and self.tune_hsv:
@@ -169,6 +169,7 @@ class CircleFeatureDetector:
     def load_hsv_config(self, filename="hsv_config.txt"):
         """Load HSV configuration from a file"""
         try:
+            # set the filename into the full path in resources directory
             with open(filename, 'r') as f:
                 lines = f.readlines()
                 for line in lines:
@@ -462,15 +463,15 @@ class CircleFeatureDetector:
 if __name__ == "__main__":
     detector = CircleFeatureDetector(
         min_circle_radius=20,
-        max_circle_radius=1000,
-        circularity_threshold=0.83,
+        max_circle_radius=1200,
+        circularity_threshold=0.85,
         match_threshold=5.0,
         visualize=True,
         debug=True,
     )
 
     image = cv2.imread(img_path)
-    cv2.imshow("Input Image", image)
+    # cv2.imshow("Input Image", image)
     
     centroids, _ = detector.detect(image)
     cv2.waitKey(0)
