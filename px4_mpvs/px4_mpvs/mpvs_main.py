@@ -93,7 +93,12 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [[82, 123], [563, 123], [176, 337], [505, 218]]
+            [
+                [64, 158],
+                [287, 182],
+                [119, 309],
+                [497, 258],
+            ],
         ).flatten()
 
         
