@@ -78,7 +78,7 @@ class CircleFeatureDetector:
 
         # HSV threshold parameters for real-time tuning
         self.hsv_lower = [0, 0, 0]
-        self.hsv_upper = [179, 153, 101]
+        self.hsv_upper = [179, 216, 80]
         
         # Create trackbars for HSV tuning if visualization is enabled
         if self.visualize and self.tune_hsv:

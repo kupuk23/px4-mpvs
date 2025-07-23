@@ -35,7 +35,7 @@ class MarkerDetectorNode(Node):
 
         self.debug = self.declare_parameter("debug", True).value
         self.visualize = self.declare_parameter("visualize", True).value
-        self.namespace = self.declare_parameter("namespace", "").value
+        self.namespace = self.declare_parameter("namespace", "pop").value
         self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Debug window
