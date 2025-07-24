@@ -85,15 +85,15 @@ def docking_state_machine(node):
     elif node.aligned and not node.pre_docked:
         u_pred, x_pred,w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
-        )  # TODO: add hybrid flag to use dynamic weight
-
+        ) 
+        
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
         feature_desired = ref[13:21, 0].flatten()  # Desired features
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        # print(f"Feature errors: {error}")
+        # node.get_logger().info(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()
@@ -105,7 +105,7 @@ def docking_state_machine(node):
                     f"features are close enough, stabilizing... {int(elapsed_time)}"
                 )
             if elapsed_time > node.pre_docked_time_threshold:
-                print("Features are close enough, stopping servoing")
+                node.get_logger().info("Features are close enough, stopping servoing")
                 node.pre_docked = True
                 node.start_recording = False  # Stop recording after pre-docking
                 node.pre_docked_time = 0

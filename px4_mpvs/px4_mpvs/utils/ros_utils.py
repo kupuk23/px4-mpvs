@@ -51,7 +51,7 @@ def generate_goal_from_object_pose(object_pose,tf_buffer, x_offset, clock):
     PoseStamped
         The goal pose in map frame, or None if transformation failed
     """
-    frame_id = "zed_camera_link"  # Replace with the actual frame ID if needed
+    frame_id = "camera_link"  # Replace with the actual frame ID if needed
     T_cam_obj = pose_to_matrix(object_pose)
     # Transform the pose to map frame and apply offset/rotation
     T_cam_goal = offset_in_front(T_cam_obj, x_offset)

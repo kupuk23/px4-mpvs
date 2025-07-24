@@ -82,8 +82,8 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
-        self.sitl = False
+        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.sitl = True
 
         self.aligning_threshold = 0.2
 
@@ -100,7 +100,7 @@ class SpacecraftIBMPVS(Node):
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -138,8 +138,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        self.setpoint_position = np.array([0.1, 0.4, 0.0])  # inverted z and y axis
+        self.setpoint_attitude = np.array([1.0, 0.0, 1.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -187,7 +187,7 @@ class SpacecraftIBMPVS(Node):
         self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
 
         self.markers_sub = self.create_subscription(
-            Float32MultiArray, "/detected_markers", self.marker_callback, 10
+            Float32MultiArray, f"{self.namespace_prefix}/detected_markers", self.marker_callback, 10
         )
 
         self.status_sub = self.create_subscription(

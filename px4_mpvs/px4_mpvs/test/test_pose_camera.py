@@ -27,7 +27,7 @@ class VisualServo(Node):
     def __init__(self):
         super().__init__("visual_servo")
 
-        self.namespace = self.declare_parameter("namespace", "pop").value
+        self.namespace = self.declare_parameter("namespace", "").value
         self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Create a subscription to the pose topic
@@ -114,10 +114,10 @@ class VisualServo(Node):
 
         # # spawn pose #1
         self.init_pos = np.array(
-            [1.36114323, -0.23419029, 0.0]
+            [0.1,0.4, 0.0]
         )  # inverted z and y axis
         self.init_att = np.array(
-            [6.68084145e-01, 8.91955807e-08, 6.40660858e-10, 7.44085729e-01]
+            [1.0, 0.0, 1.0, 0.0]
         )
 
         # [ 0.11974171 -1.50361025  0.35518408] [ 8.64499688e-01  7.21904883e-08 -3.61660879e-09  5.02633214e-01]
@@ -139,13 +139,13 @@ class VisualServo(Node):
         )
 
         # Wait for service (add timeout for robustness)
-        if not self.param_client.wait_for_service(timeout_sec=1.0):
+        if not self.param_client.wait_for_service(timeout_sec=3.0):
             self.get_logger().warn(
                 "pose_estimation_pcl parameter service not available"
             )
             return
 
-        self.move_robot(self.init_pos, self.init_att)
+        # self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.aligning_callback)
 
