@@ -40,7 +40,6 @@ from px4_mpvs.models.spacecraft_vs_model import SpacecraftVSModel
 from time import perf_counter
 
 
-
 class SpacecraftVSMPC:
     def __init__(self, model, build=False, p_obj=None, x0=None, Z=None):
 
@@ -135,38 +134,86 @@ class SpacecraftVSMPC:
         ocp.constraints.idxbu = np.array([0, 1, 2, 3])
         ocp.constraints.x0 = x0
 
-
         # set constraints on X
-        ocp.constraints.lbx = np.array([-5, -5, -5, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit])
-        ocp.constraints.ubx = np.array([+5, +5, +5, +self.vel_limit, +self.vel_limit, +self.vel_limit, +self.vel_limit, +self.vel_limit, +self.vel_limit])
+        ocp.constraints.lbx = np.array(
+            [
+                -5,
+                -5,
+                -5,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+            ]
+        )
+        ocp.constraints.ubx = np.array(
+            [
+                +5,
+                +5,
+                +5,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+            ]
+        )
         ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4, 5, 10, 11, 12])
 
         # set constraints on X at the end of the horizon
-        ocp.constraints.lbx_e = np.array([-5, -5, -5, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit, -self.vel_limit])
-        ocp.constraints.ubx_e = np.array([+5, +5, +5, self.vel_limit, self.vel_limit, self.vel_limit, self.vel_limit, self.vel_limit, self.vel_limit])
+        ocp.constraints.lbx_e = np.array(
+            [
+                -5,
+                -5,
+                -5,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+            ]
+        )
+        ocp.constraints.ubx_e = np.array(
+            [
+                +5,
+                +5,
+                +5,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+            ]
+        )
         ocp.constraints.idxbx_e = np.array([0, 1, 2, 3, 4, 5, 10, 11, 12])
 
-
-
-        use_soft_constraints = True
+        use_soft_constraints = False
         if use_soft_constraints:
             # set weights slack variables for X constraints
             ocp.constraints.idxsbx = np.arange(len(ocp.constraints.idxbx))
-            ocp.cost.Zl = np.array([1e6]*len(ocp.constraints.idxsbx))
-            ocp.cost.Zu = np.array([1e6]*len(ocp.constraints.idxsbx))
-            ocp.cost.zl = np.array([0.0]*len(ocp.constraints.idxsbx))
-            ocp.cost.zu = np.array([0.0]*len(ocp.constraints.idxsbx))
+            ocp.cost.Zl = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.Zu = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.zl = np.array([0.0] * len(ocp.constraints.idxsbx))
+            ocp.cost.zu = np.array([0.0] * len(ocp.constraints.idxsbx))
 
             # set weights slack variables for X_e constraints
             ocp.constraints.idxsbx_e = np.arange(len(ocp.constraints.idxbx_e))
-            ocp.cost.Zl_e = np.array([1e6]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.Zu_e = np.array([1e6]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.zl_e = np.array([0.0]*len(ocp.constraints.idxsbx_e))
-            ocp.cost.zu_e = np.array([0.0]*len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zl_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zu_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zl_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zu_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
 
         return ocp
 
     def setup(self, x0, N_horizon, Tf, p_obj0, Z0):
+        def to_DM(A):
+            return cs.DM(A) if isinstance(A, np.ndarray) else A
+
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
         # set model
@@ -188,64 +235,40 @@ class SpacecraftVSMPC:
         w_p = ocp.model.p[7]
         w_s = ocp.model.p[8]  # Feature dynamics
 
-
         Qp_p = self.Qp_p  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         Qp_q = self.Qp_q  # Quaternion scalar part, 8e3
         w_features = self.w_features  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         # set weights for the cost function
-        Qp = np.diag(
-            [
-                *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                # Qp_q,
-                Qp_q,
-                *[4e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
-            ]
-        )
+        Q = [
+            *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+            *[1e2 * 2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+            # Qp_q,
+            Qp_q,
+            *[4e2 * 5] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+        ]
 
-        Qs = np.diag(
-            [
-                *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[50e2] * 3,  # Velocity weights (vx, vy, vz) # 70e2
-                0,
-                *[4e3] * 3,  # angular vel (ωx, ωy, ωz) #5e3
-            ]
-        )
+        # Qs = [
+        #         *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        #         *[50e2] * 3,  # Velocity weights (vx, vy, vz) # 70e2
+        #         0,
+        #         *[4e3] * 3,  # angular vel (ωx, ωy, ωz) #5e3
+        #     ]
 
-        S_s = np.diag(
-            [
-                *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
-            ]
-        )
+        S = [
+            *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        ]
 
-    
-        Q = w_p * Qp + (1.0 - w_p) * Qs
+        eps = 1e-5  # small value to avoid division by zero
 
-        S = (1.0 - w_p) * S_s
+        Q_e = [element * 20 for element in Q]
+        S_e = [element * 80 for element in S]  
 
-        Q_e = 20 * Q
-        S_e = 80 * S
+        R_mat = [1e1] * 4
 
-        R_mat = np.diag([1e1] * 4)
-        Q_full = np.zeros((Q.shape[0] + S.shape[0] + R_mat.shape[0], 
-                   Q.shape[1] + S.shape[1] + R_mat.shape[1]))
-
-        Q_full[:Q.shape[0], :Q.shape[1]] = Q
-        Q_full[Q.shape[0]:Q.shape[0]+S.shape[0], Q.shape[1]:Q.shape[1]+S.shape[1]] = S
-        Q_full[Q.shape[0]+S.shape[0]:, Q.shape[1]+S.shape[1]:] = R_mat
-
-        # make Q_e_Full from Q_e and S_e
-        Q_e_full = np.zeros((Q_e.shape[0] + S_e.shape[0], 
-                   Q_e.shape[1] + S_e.shape[1]))
-        Q_e_full[:Q_e.shape[0], :Q_e.shape[1]] = Q_e
-        Q_e_full[Q_e.shape[0]:, Q_e.shape[1]:] = S_e
-
-
-        ocp.cost.W_0 = Q_full
-        ocp.cost.W = Q_full
-        ocp.cost.W_e = Q_e_full
-
+        ocp.cost.W_0 = np.diag(Q + S + R_mat)
+        ocp.cost.W = np.diag(Q + S + R_mat)
+        ocp.cost.W_e = np.diag(Q_e + S_e)
 
         # References:
         x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 robot states + 8 features states
@@ -258,20 +281,29 @@ class SpacecraftVSMPC:
         x = ocp.model.x
         u = ocp.model.u
 
-        x_error = x[0:3] - x_ref[0:3]
-        x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        x_error = cs.vertcat(x_error, 1 - (x[6:10].T @ x_ref[6:10])**2)
-        x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
-        x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
+        # Error scaling for x_error
+        # p : wp
+        # v : 1/2(wp+eps)
+        # q : wp
+        # w : 1/5(wp+eps)
+        # s : 1-wp
+        v_scale = 0.5 * (w_p + eps)  # Scale for velocity error
+        w_scale = 0.2 * (w_p + eps)  # Scale for angular velocity error
+        s_scale = 1.0 - w_p  # Scale for feature error
+
+        x_error = w_p * (x[0:3] - x_ref[0:3])
+        x_error = cs.vertcat(x_error, v_scale * (x[3:6] - x_ref[3:6]))
+        x_error = cs.vertcat(x_error, w_p * (1 - (x[6:10].T @ x_ref[6:10]) ** 2))
+        x_error = cs.vertcat(x_error, w_scale * (x[10:13] - x_ref[10:13]))
+        x_error = cs.vertcat(x_error, s_scale * (x[13:] - x_ref[13:]))
         u_error = u - u_ref
 
         ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, w_p, w_s)
 
-
         # define cost with parametric reference
-        ocp.cost.cost_type = 'NONLINEAR_LS'
-        ocp.cost.cost_type_e = 'NONLINEAR_LS'
-        ocp.cost.cost_type_0 = 'NONLINEAR_LS'
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
 
         ocp.model.cost_y_expr_0 = cs.vertcat(x_error, u_error)
         ocp.model.cost_y_expr = cs.vertcat(x_error, u_error)
@@ -281,19 +313,15 @@ class SpacecraftVSMPC:
         ocp.cost.yref = np.zeros(ocp.model.cost_y_expr.shape[0])
         ocp.cost.yref_e = np.zeros(ocp.model.cost_y_expr_e.shape[0])
 
-        
-
         ocp = self.set_constraints(ocp, x0)
 
         # set initial state
         ocp.constraints.x0 = x0
 
-        
         p_0 = np.concatenate(
             (x0, np.zeros(nu), p_obj0, Z0, np.ones(1), np.zeros(1))
         )  # Z = feature depth
         ocp.parameter_values = p_0
-
 
         # set options
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"
@@ -376,12 +404,11 @@ class SpacecraftVSMPC:
         w_s = softmax_s / (softmax_p + softmax_s + eps)
         w_p = 1.0 - w_s
 
-
         # Ratio method
-        Vs_dot = cs.if_else(
-            Vs_dot >= 0, 0, Vs_dot
-        )
-        w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
+        w_p = cs.if_else(
+            Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
+        )  # ensure w_p is non-negative
         # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
         w_s = 1.0 - w_p  # w_s is always non-negative
 
@@ -454,7 +481,7 @@ class SpacecraftVSMPC:
             # TEST DISCRETE
             # w_p = np.zeros(1)
             # w_s = np.ones(1)
-            
+
             if w_p < 0.05:
                 self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:
@@ -482,7 +509,7 @@ class SpacecraftVSMPC:
 
         # set initial state
         ocp_solver.set(0, "lbx", x0.flatten())
-        ocp_solver.set(0, "ubx", x0.flatten()) 
+        ocp_solver.set(0, "ubx", x0.flatten())
 
         status = ocp_solver.solve()
 
