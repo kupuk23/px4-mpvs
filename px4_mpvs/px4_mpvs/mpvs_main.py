@@ -289,6 +289,7 @@ class SpacecraftIBMPVS(Node):
 
     def vehicle_angular_velocity_callback(self, msg):
         # NED-> ENU transformation
+        self.vehicle_angular_velocity_timestamp = Clock().now().nanoseconds / 1e9
         self.vehicle_angular_velocity[0] = msg.xyz[0]
         self.vehicle_angular_velocity[1] = -msg.xyz[1]
         self.vehicle_angular_velocity[2] = -msg.xyz[2]
@@ -444,7 +445,8 @@ class SpacecraftIBMPVS(Node):
         self.get_logger().info(
             f"NEW Setpoint position: {self.setpoint_position}"
         )
-        self.mpc.update_constraints(self.aligning)
+        
+        # self.mpc.update_constraints(self.aligning)
 
         self.p_obj = np.array([-100.0, 0, 0])
 

@@ -450,11 +450,6 @@ class VisualServo(Node):
         self.vehicle_local_velocity[1] = msg.vx
         self.vehicle_local_velocity[2] = -msg.vz
 
-    def vehicle_angular_velocity_callback(self, msg):
-        # NED-> ENU transformation
-        self.vehicle_angular_velocity[0] = msg.xyz[0]
-        self.vehicle_angular_velocity[1] = -msg.xyz[1]
-        self.vehicle_angular_velocity[2] = -msg.xyz[2]
 
 
 def main():

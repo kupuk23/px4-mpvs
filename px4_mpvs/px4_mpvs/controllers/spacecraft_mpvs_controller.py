@@ -50,9 +50,9 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 9e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 8e2  # Quaternion scalar part, 8e3
-        self.w_features = 5e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_q = 3e3  # Quaternion scalar part, 8e3
+        self.w_features = 4e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         self.x0 = (
             x0
@@ -242,10 +242,10 @@ class SpacecraftVSMPC:
         # set weights for the cost function
         Q = [
             *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-            *[1e2 * 2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+            *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
             # Qp_q,
             Qp_q,
-            *[4e2 * 5] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+            *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
         ]
 
         # Qs = [
@@ -259,10 +259,9 @@ class SpacecraftVSMPC:
             *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         ]
 
-        eps = 1e-5  # small value to avoid division by zero
 
-        Q_e = [element * 20 for element in Q]
-        S_e = [element * 80 for element in S]  
+        Q_e = [element * 30 for element in Q]
+        S_e = [element * 80 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -283,18 +282,19 @@ class SpacecraftVSMPC:
 
         # Error scaling for x_error
         # p : wp
-        # v : 1/2(wp)
+        # v : 50-(49wp)
         # q : wp
-        # w : 1/5(wp)
+        # w : 10-(9wp)
         # s : 1-wp
-        p_scale = cs.fmax(w_p, eps)
-        v_scale = 0.5 / cs.fmax(w_p, eps)  # Scale for velocity error
-        w_scale = 0.2 / cs.fmax(w_p, eps)  # Scale for angular velocity error
-        s_scale = 1.0 - w_p  # Scale for feature error
+        v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(10 - (9 * w_p))  # Scale for angular velocity error
+        s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
-        x_error = p_scale * (x[0:3] - x_ref[0:3])
+        x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
         x_error = cs.vertcat(x_error, v_scale * (x[3:6] - x_ref[3:6]))
-        x_error = cs.vertcat(x_error, p_scale * (1 - (x[6:10].T @ x_ref[6:10]) ** 2))
+        x_error = cs.vertcat(
+            x_error, cs.sqrt(w_p) * (1 - (x[6:10].T @ x_ref[6:10]) ** 2)
+        )
         x_error = cs.vertcat(x_error, w_scale * (x[10:13] - x_ref[10:13]))
         x_error = cs.vertcat(x_error, s_scale * (x[13:] - x_ref[13:]))
         u_error = u - u_ref
@@ -335,9 +335,7 @@ class SpacecraftVSMPC:
 
         use_RTI = True
         if use_RTI:
-            ocp.solver_options.nlp_solver_type = (
-                "SQP_RTI"  # SQP_RTI, SQP, non-sqp TODO : Look for other solvers
-            )
+            ocp.solver_options.nlp_solver_type = "SQP_RTI"
             ocp.solver_options.sim_method_num_stages = 4
 
             ocp.solver_options.sim_method_num_steps = 3
@@ -394,7 +392,7 @@ class SpacecraftVSMPC:
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 2 # how sharp the softmax is, 3.5 for softmax mode
+        k = 3  # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
