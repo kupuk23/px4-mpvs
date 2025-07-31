@@ -139,7 +139,7 @@ class VisualServo(Node):
         )
 
         # Wait for service (add timeout for robustness)
-        if not self.param_client.wait_for_service(timeout_sec=1.0):
+        if not self.param_client.wait_for_service(timeout_sec=5.0):
             self.get_logger().warn(
                 "pose_estimation_pcl parameter service not available"
             )

@@ -88,13 +88,18 @@ def docking_state_machine(node):
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
         ) 
 
+        node.mode= 2 if w_s == 1.0 else node.mode
+            
+
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
         feature_desired = ref[13:21, 0].flatten()  # Desired features
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        # print(f"Feature errors: {error}")
+        print(f"Current features: {feature_current}")
+        print(f"feature depth: {node.Z}")
+        print(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()

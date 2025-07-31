@@ -42,15 +42,7 @@ class SpacecraftVSModel:
 
         self.name = "spacecraft_mpvs_model"
 
-        # Camera intrinsic parameters (FOR SIMULATION)
-        # self.K = np.array(
-        #     [
-        #         [500.0, 0.0, 320.0],  # fx, 0, cx
-        #         [0.0, 500.0, 240.0],  # 0, fy, cy
-        #         [0.0, 0.0, 1.0],  # 0, 0, 1
-        #     ]
-        # )
-
+        # Camera intrinsic parameters
         self.K = np.array(
             [
                 [692.61181640625, 0.0, 472.39215087890625],  # fx, 0, cx
@@ -58,7 +50,7 @@ class SpacecraftVSModel:
                 [0.0, 0.0, 1.0],  # 0, 0, 1
             ]
         )
-        self.K = cs.DM(self.K) 
+        self.K = cs.DM(self.K)  # Convert to CasADi DM for compatibility
 
         # constants
         self.mass = 16.8
@@ -107,21 +99,21 @@ class SpacecraftVSModel:
         # w_cam = Rbc*w_base
         # v_cam = Rbc*(v_base + w_base x r_bc)
         # rotate the camera frame 180 degrees around the z-axis
-        Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])  # TODO: FIX ROTATION
+        Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]) 
         r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
 
         v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
         w_cam = cs.mtimes(Rbc, w)
         v_image = cs.vertcat(
-            v_cam[1],  # X_image = -Y_cam (right = -left)
+            -v_cam[1],  # X_image = -Y_cam (right = -left)
             -v_cam[2],  # Y_image = -Z_cam (down = -up)
-            -v_cam[0],  # Z_image = X_cam (forward = forward)
+            v_cam[0],  # Z_image = X_cam (forward = forward)
         )
 
         w_image = cs.vertcat(
-            w_cam[1],  # Roll around X_image = -pitch around Y_cam
+            -w_cam[1],  # Roll around X_image = -pitch around Y_cam
             -w_cam[2],  # Pitch around Y_image = -yaw around Z_cam
-            -w_cam[0],  # Yaw around Z_image = roll around X_cam
+            w_cam[0],  # Yaw around Z_image = roll around X_cam
         )
         twist = cs.vertcat(v_image, w_image)  # 6x1
         s_dot_vec = cs.mtimes(L, twist)  # 8x1
