@@ -144,6 +144,7 @@ class SpacecraftVSMPC:
         ocp.constraints.idxbx_e = np.array([0, 1, 2, 3, 4, 5, 10, 11, 12])
 
         use_soft_constraints = False
+        use_soft_constraints = False
         if use_soft_constraints:
             # set weights slack variables for X constraints
             ocp.constraints.idxsbx = np.arange(len(ocp.constraints.idxbx))
@@ -151,9 +152,17 @@ class SpacecraftVSMPC:
             ocp.cost.Zu = np.array([1e6] * len(ocp.constraints.idxsbx))
             ocp.cost.zl = np.array([0.0] * len(ocp.constraints.idxsbx))
             ocp.cost.zu = np.array([0.0] * len(ocp.constraints.idxsbx))
+            ocp.cost.Zl = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.Zu = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.zl = np.array([0.0] * len(ocp.constraints.idxsbx))
+            ocp.cost.zu = np.array([0.0] * len(ocp.constraints.idxsbx))
 
             # set weights slack variables for X_e constraints
             ocp.constraints.idxsbx_e = np.arange(len(ocp.constraints.idxbx_e))
+            ocp.cost.Zl_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zu_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zl_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zu_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
             ocp.cost.Zl_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
             ocp.cost.Zu_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
             ocp.cost.zl_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
@@ -197,6 +206,12 @@ class SpacecraftVSMPC:
             *[2e1] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
         ]
 
+        # Qs = [
+        #         *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        #         *[50e2] * 3,  # Velocity weights (vx, vy, vz) # 70e2
+        #         0,
+        #         *[4e3] * 3,  # angular vel (ωx, ωy, ωz) #5e3
+        #     ]
         # Qs = [
         #         *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         #         *[50e2] * 3,  # Velocity weights (vx, vy, vz) # 70e2
@@ -254,6 +269,9 @@ class SpacecraftVSMPC:
         ocp.cost.cost_type = "NONLINEAR_LS"
         ocp.cost.cost_type_e = "NONLINEAR_LS"
         ocp.cost.cost_type_0 = "NONLINEAR_LS"
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
 
         ocp.model.cost_y_expr_0 = cs.vertcat(x_error, u_error)
         ocp.model.cost_y_expr = cs.vertcat(x_error, u_error)
@@ -267,6 +285,7 @@ class SpacecraftVSMPC:
 
         # set initial state
         ocp.constraints.x0 = x0
+
 
         p_0 = np.concatenate(
             (x0, np.zeros(nu), p_obj0, Z0, np.ones(1), np.zeros(1))
@@ -353,6 +372,10 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
+        Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
+        w_p = cs.if_else(
+            Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
+        )  # ensure w_p is non-negative
         Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
         w_p = cs.if_else(
             Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
@@ -457,6 +480,7 @@ class SpacecraftVSMPC:
 
         # set initial state
         ocp_solver.set(0, "lbx", x0.flatten())
+        ocp_solver.set(0, "ubx", x0.flatten())
         ocp_solver.set(0, "ubx", x0.flatten())
 
         status = ocp_solver.solve()
