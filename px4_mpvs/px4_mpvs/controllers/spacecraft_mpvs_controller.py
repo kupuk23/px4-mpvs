@@ -100,6 +100,7 @@ class SpacecraftVSMPC:
         )
         self.model.build_feature_dyn_fun()
         self.model.build_interaction_mat_fun()
+        self.model.build_debug_functions()
 
     def set_constraints(self, ocp, x0):
         Fmax = self.model.max_thrust
@@ -258,7 +259,6 @@ class SpacecraftVSMPC:
         S = [
             *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         ]
-
 
         Q_e = [element * 30 for element in Q]
         S_e = [element * 80 for element in S]
@@ -434,6 +434,53 @@ class SpacecraftVSMPC:
             2e3 if servoing_enabled else 0
         )  # 2e3, TODO: set to 0 for no slack
 
+    def debug_twist_transformations(self, x0, verbose=True):
+        """Debug twist transformations step by step"""
+        p = x0[0:3]
+        v = x0[3:6]
+        q = x0[6:10]
+        w = x0[10:13]
+        
+        # if verbose:
+        #     print("="*50)
+        #     print("TWIST TRANSFORMATION DEBUG")
+        #     print("="*50)
+        #     print(f"Position (p): {p}")
+        #     print(f"Velocity (v): {v}")
+        #     print(f"Quaternion (q): {q}")
+        #     print(f"Angular velocity (w): {w}")
+        #     print("-"*30)
+        
+        # Debug twist map
+        twist_map = self.model.debug_twist_map(v, w)
+        twist_map_np = twist_map.full().flatten()
+        
+        # Debug twist transformations
+        twist_map_dbg, twist_base_dbg, R_mb = self.model.debug_twist_base(p, v, q, w)
+        twist_map_np = twist_map_dbg.full().flatten()
+        twist_base_np = twist_base_dbg.full().flatten()
+        R_mb_np = R_mb.full()
+        
+        # Debug full transformation
+        twist_map_full, twist_base_full, twist_cam_full, twist_optical_full = self.model.debug_twist_cam(p, v, q, w)
+        twist_cam_np = twist_cam_full.full().flatten()
+        twist_optical_np = twist_optical_full.full().flatten()
+
+        # Debug adjoint matrices
+        # adj_mb = self.model.debug_adj_mb(q, p)
+        # adj_bc = self.model.debug_adj_bc()
+        # adj_mb_np = adj_mb.full()
+        # adj_bc_np = adj_bc.full()
+        
+        if verbose:
+            print("="*50)
+            print(f"Twist Map (v,w): [{', '.join([f'{x:.2f}' for x in twist_map_np])}]")
+            print(f"Twist Base: [{', '.join([f'{x:.2f}' for x in twist_base_np])}]")
+            print("-"*30)
+            # print(f"Twist Camera: [{', '.join([f'{x:.2f}' for x in twist_cam_np])}]")
+            print(f"Twist Optical: [{', '.join([f'{x:.2f}' for x in twist_optical_np])}]")
+            print("="*50)
+
     def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False):
 
         # Set reference, create zero reference
@@ -444,6 +491,11 @@ class SpacecraftVSMPC:
             )
             zero_ref[6] = 1.0
 
+        # preparation phase
+        ocp_solver = self.ocp_solver
+
+        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
+
         # ref[6:10, :] = self.debug_quaternion_reference(x0, ref[:, 0])
         # q_err = quat_error(x0[6:10], ref[6:10,0])  # Quaternion error
         # # print the quaternion error for debugging
@@ -453,16 +505,7 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
 
         L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
-        s_dot = s_dot.full().flatten()  # Convert to numpy array
-
-        # preparation phase
-        ocp_solver = self.ocp_solver
-
-        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
-
-        L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
+        s_dot = self.model.feat_dyn_f(L_val, x0[0:3], x0[3:6], x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
 
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
@@ -478,8 +521,8 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = np.zeros(1)
-            # w_s = np.ones(1)
+            w_p = np.zeros(1)
+            w_s = np.ones(1)
 
             if w_p < 0.05:
                 self.ibvs_mode = True
@@ -515,12 +558,11 @@ class SpacecraftVSMPC:
         print(f"===== Lyapunov Values =====")
         # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
         print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-        print(
-            f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-        )
+        print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
         print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
         if verbose:
+            # self.debug_twist_transformations(x0)
             if hybrid_mode and not self.ibvs_mode:
                 # print(f"===== Lyapunov Values =====")
                 # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")

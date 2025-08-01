@@ -79,7 +79,7 @@ from time import perf_counter
 
 class SpacecraftIBMPVS(Node):
 
-    def __init__(self):
+    def __init__(self): 
         super().__init__("spacecraft_mpvs")
 
         self.build = True  # Set to False after the first run to avoid rebuilding
@@ -138,8 +138,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.1, 0.4, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 1.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        self.setpoint_position = np.array([1.16415286, -0.25267029,  0.43374729])  
+        self.setpoint_attitude = np.array([7.02117443e-01, 0.0, 1.0, 7.12061286e-01])  
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
