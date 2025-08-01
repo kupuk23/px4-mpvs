@@ -125,9 +125,9 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
 
         # set bounds for image features (x coordinates)
-        # ocp.constraints.idxbx = np.array([13, 15, 17, 19])
-        # ocp.constraints.lbx = np.array([self.s_min] * 4)
-        # ocp.constraints.ubx = np.array([self.s_max] * 4)
+        ocp.constraints.idxbx = np.array([13, 15, 17, 19])
+        ocp.constraints.lbx = np.array([self.s_min] * 4)
+        ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -246,7 +246,7 @@ class SpacecraftVSMPC:
             *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
             # Qp_q,
             Qp_q,
-            *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+            *[1e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
         ]
 
         # Qs = [
@@ -261,7 +261,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 80 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -287,7 +287,7 @@ class SpacecraftVSMPC:
         # w : 10-(9wp)
         # s : 1-wp
         v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(10 - (9 * w_p))  # Scale for angular velocity error
+        w_scale = cs.sqrt(20 - (19 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -371,7 +371,7 @@ class SpacecraftVSMPC:
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = x[0:3] - x_ref[0:3]  # Position error
+        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
 
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
@@ -385,7 +385,7 @@ class SpacecraftVSMPC:
 
         S = S * 25
 
-        e_s = x[13:] - x_ref[13:]
+        e_s = (x[13:] - x_ref[13:])**2
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
@@ -555,11 +555,11 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
 
-        print(f"===== Lyapunov Values =====")
-        # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-        print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-        print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
-        print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+        # print(f"===== Lyapunov Values =====")
+        # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+        # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+        # print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
+        # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
         if verbose:
             # self.debug_twist_transformations(x0)
@@ -584,6 +584,8 @@ class SpacecraftVSMPC:
         nx = self.model.get_acados_model().x.size()[0]
         nu = self.model.get_acados_model().u.size()[0]
 
+        
+
         simX = np.ndarray((N + 1, nx))
         simU = np.ndarray((N, nu))
 
@@ -592,5 +594,10 @@ class SpacecraftVSMPC:
             simX[i, :] = self.ocp_solver.get(i, "x")
             simU[i, :] = self.ocp_solver.get(i, "u")
         simX[N, :] = self.ocp_solver.get(N, "x")
+
+        # debug the predicted twist on the first step
+        v_pred = simX[0, 3:6]
+        w_pred = simX[0, 10:13]
+        print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot

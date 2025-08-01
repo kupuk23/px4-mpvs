@@ -54,6 +54,8 @@ from tf2_ros import Buffer, TransformListener
 from px4_mpvs.utils.ros_utils import lookup_transform
 from tf2_geometry_msgs import do_transform_pose
 
+from std_srvs.srv import SetBool
+
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleAttitude
@@ -87,6 +89,10 @@ class SpacecraftIBMPVS(Node):
 
         self.aligning_threshold = 0.2
 
+        self.srv = self.create_service(
+            SetBool, "run_debug", self.aligned_callback_enabled
+        )
+
         # self.camera_frame_id = self.declare_parameter(
         #     "camera_frame_id", "camera_link"
         # ).value
@@ -95,8 +101,6 @@ class SpacecraftIBMPVS(Node):
         self.desired_points = np.array(
             [[82, 123], [563, 123], [176, 337], [505, 218]]
         ).flatten()
-
-        
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
@@ -138,8 +142,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([1.16415286, -0.25267029,  0.43374729])  
-        self.setpoint_attitude = np.array([7.02117443e-01, 0.0, 1.0, 7.12061286e-01])  
+        self.setpoint_position = np.array([1.63171983, -0.89508373, 0.0])  
+        self.setpoint_attitude = np.array([0.71056116, 0.0, 0.0, 0.70135128])  
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -415,6 +419,19 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude[2] = msg.pose.orientation.y
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
+    def aligned_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        response.success = True
+        if request.data:
+            response.message = "Docking mode enabled"
+            self.hybrid_start_time = perf_counter()
+            self.aligned = True
+            self.aligning = False
+            self.mode = 1
+            self.get_logger().info("Docking mode enabled")
+            
+        return response
+
     def servo_srv_callback(self, request: SetHomePose, response: SetHomePose.Response):
         if request.align_mode:
             self.start_docking_time = perf_counter()
@@ -434,6 +451,9 @@ class SpacecraftIBMPVS(Node):
             self.get_logger().info(
             f"OLD Setpoint position: {self.setpoint_position}"
         )
+            self.get_logger().info(
+                f"OLD Setpoint attitude: {self.setpoint_attitude}"
+            )
 
             self.setpoint_position = np.array(
                 [

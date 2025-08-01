@@ -147,8 +147,6 @@ def docking_state_machine(node):
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             
             # plot_stats(node.statistics)
-
-
         
         u_pred = np.zeros((node.mpc.N + 1, 4))
         u_pred[:, 0] = -0.1

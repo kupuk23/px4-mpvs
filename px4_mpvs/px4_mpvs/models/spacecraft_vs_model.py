@@ -114,14 +114,18 @@ class SpacecraftVSModel:
         twist_cam = cs.mtimes(self.adj_transform_inverse(R_bc, t_bc), twist_base)  # 6x6
 
         # convert to openCV camera frame reference, x_im -> -y_cam, y_im -> -z_cam, z_im -> x_cam
-        twist_optical = cs.vertcat(
-            -twist_cam[1],
-            -twist_cam[2],
-            twist_cam[0],
-            -twist_cam[4],
-            -twist_cam[5],
-            twist_cam[3],
-        )
+        R_cam_to_optical = cs.DM([
+            [0, -1,  0],  # x_optical = -y_cam
+            [0,  0, -1],  # y_optical = -z_cam  
+            [1,  0,  0]   # z_optical = x_cam
+        ])
+
+        # Transform the twist properly
+        v_cam = twist_cam[:3]
+        w_cam = twist_cam[3:]
+        v_optical = cs.mtimes(R_cam_to_optical, v_cam)
+        w_optical = cs.mtimes(R_cam_to_optical, w_cam)
+        twist_optical = cs.vertcat(v_optical, w_optical)
 
         s_dot_vec = cs.mtimes(L, twist_optical)  # 8x1
         return s_dot_vec
