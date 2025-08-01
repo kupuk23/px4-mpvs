@@ -108,10 +108,15 @@ class SpacecraftVSModel:
         R_mb = self.q_to_rot_mat(q)  # rotation matrix from map to base frame
         twist_base = cs.mtimes(self.adj_transform_inverse(R_mb, p), twist_map)  # 6x6
 
+        v_base = cs.mtimes(R_mb, (v + cs.cross(w, p)))
+        w_base = cs.mtimes(R_mb, w)
+
         # twist_base -> twist_cam:
         R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
         t_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
         twist_cam = cs.mtimes(self.adj_transform_inverse(R_bc, t_bc), twist_base)  # 6x6
+
+        
 
         # convert to openCV camera frame reference, x_im -> -y_cam, y_im -> -z_cam, z_im -> x_cam
         R_cam_to_optical = cs.DM([
@@ -121,8 +126,10 @@ class SpacecraftVSModel:
         ])
 
         # Transform the twist properly
-        v_cam = twist_cam[:3]
-        w_cam = twist_cam[3:]
+        # v_cam = twist_cam[:3]
+        # w_cam = twist_cam[3:]
+        v_cam = cs.mtimes(R_bc, (v_base + cs.cross(w_base, t_bc)))
+        w_cam = cs.mtimes(R_bc, w_base)
         v_optical = cs.mtimes(R_cam_to_optical, v_cam)
         w_optical = cs.mtimes(R_cam_to_optical, w_cam)
         twist_optical = cs.vertcat(v_optical, w_optical)

@@ -555,11 +555,11 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
 
-        # print(f"===== Lyapunov Values =====")
-        # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-        # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-        # print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
-        # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+        print(f"===== Lyapunov Values =====")
+        # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+        print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+        print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
+        print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
         if verbose:
             # self.debug_twist_transformations(x0)
@@ -596,8 +596,8 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         # debug the predicted twist on the first step
-        v_pred = simX[0, 3:6]
-        w_pred = simX[0, 10:13]
-        print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
+        # v_pred = simX[0, 3:6]
+        # w_pred = simX[0, 10:13]
+        # print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot
