@@ -93,7 +93,7 @@ def docking_state_machine(node):
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        # node.get_logger().info(f"Feature errors: {error}")
+        node.get_logger().info(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()

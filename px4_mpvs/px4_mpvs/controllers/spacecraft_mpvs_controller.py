@@ -52,7 +52,7 @@ class SpacecraftVSMPC:
 
         self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 3e3  # Quaternion scalar part, 8e3
-        self.w_features = 35e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.w_features = 40e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         self.x0 = (
             x0
@@ -285,7 +285,7 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(35 - (34 * w_p))  # Scale for velocity error
+        v_scale = cs.sqrt(40 - (39 * w_p))  # Scale for velocity error
         w_scale = cs.sqrt(20 - (20 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 

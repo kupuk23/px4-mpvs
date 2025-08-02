@@ -149,7 +149,7 @@ class SpacecraftVSModel:
         Ad_T_om = self.adjoint_matrix(T_om)
 
         # Apply adjoint transformation to get twist in optical frame
-        twist_optical = cs.mtimes(Ad_T_om, twist_map)
+        twist_optical = cs.mtimes(Ad_T_om.T, twist_map)
         s_dot_vec = cs.mtimes(L, twist_optical)  # 8x1
         return s_dot_vec
 

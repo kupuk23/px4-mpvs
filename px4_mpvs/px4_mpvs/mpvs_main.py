@@ -86,7 +86,7 @@ class SpacecraftIBMPVS(Node):
         self.build = True  # Set to False after the first run to avoid rebuilding
         self.sitl = True
 
-        self.aligning_threshold = 0.2
+        self.aligning_threshold = 0.35
 
         self.srv = self.create_service(
             SetBool, "run_debug", self.aligned_callback_enabled
