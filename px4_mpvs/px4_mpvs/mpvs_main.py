@@ -71,6 +71,7 @@ from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
+from std_srvs.srv import SetBool
 
 from px4_mpvs.docking_state_machine import docking_state_machine
 
@@ -86,6 +87,10 @@ class SpacecraftIBMPVS(Node):
         self.sitl = True
 
         self.aligning_threshold = 0.2
+
+        self.srv = self.create_service(
+            SetBool, "run_debug", self.aligned_callback_enabled
+        )
 
         # self.camera_frame_id = self.declare_parameter(
         #     "camera_frame_id", "camera_link"
@@ -138,8 +143,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.1, 0.4, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 1.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        self.setpoint_position = np.array([-0.4, 0.0, 0.0])  # inverted z and y axis
+        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -180,6 +185,19 @@ class SpacecraftIBMPVS(Node):
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+
+    def aligned_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        response.success = True
+        if request.data:
+            response.message = "Docking mode enabled"
+            self.hybrid_start_time = perf_counter()
+            self.aligned = True
+            self.aligning = False
+            self.mode = 1
+            self.get_logger().info("Docking mode enabled")
+            
+        return response
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 

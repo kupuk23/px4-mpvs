@@ -261,7 +261,7 @@ class SpacecraftVSMPC:
 
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 80 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -286,8 +286,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(10 - (9 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(40 - (39 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(20 - (19 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -371,7 +371,7 @@ class SpacecraftVSMPC:
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = x[0:3] - x_ref[0:3]  # Position error
+        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
 
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
@@ -385,7 +385,7 @@ class SpacecraftVSMPC:
 
         S = S * 25
 
-        e_s = x[13:] - x_ref[13:]
+        e_s = (x[13:] - x_ref[13:])**2
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
@@ -453,17 +453,16 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
 
         L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
+        s_dot = self.model.feat_dyn_f(L_val, x0[0:3],x0[3:6],x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
+
+        # print(f"Feature dynamics s_dot: {s_dot}")
 
         # preparation phase
         ocp_solver = self.ocp_solver
 
         x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
 
-        L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
-        s_dot = s_dot.full().flatten()  # Convert to numpy array
 
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
             self.define_lyapunov_weight(
@@ -515,10 +514,13 @@ class SpacecraftVSMPC:
         print(f"===== Lyapunov Values =====")
         # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
         print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-        print(
-            f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-        )
-        print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+        # print(
+        #     f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+        # )
+        # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+        U, S, Vt = np.linalg.svd(L_val)          #  S = [σ1 … σ6]
+        kappa = S.max() / S.min()
+        print(f"Condition number of L: {kappa:.2f}")
 
         if verbose:
             if hybrid_mode and not self.ibvs_mode:
