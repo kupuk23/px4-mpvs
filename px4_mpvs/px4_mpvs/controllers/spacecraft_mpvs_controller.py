@@ -52,7 +52,7 @@ class SpacecraftVSMPC:
 
         self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 3e3  # Quaternion scalar part, 8e3
-        self.w_features = 4e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.w_features = 35e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         self.x0 = (
             x0
@@ -242,7 +242,7 @@ class SpacecraftVSMPC:
         # set weights for the cost function
         Q = [
             *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-            *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+            *[2e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
             # Qp_q,
             Qp_q,
             *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
@@ -259,9 +259,8 @@ class SpacecraftVSMPC:
             *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         ]
 
-
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 50 for element in S]
+        S_e = [element * 40 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -286,8 +285,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(40 - (39 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(20 - (19 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(35 - (34 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(20 - (20 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -371,7 +370,7 @@ class SpacecraftVSMPC:
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
+        e_p = (x[0:3] - x_ref[0:3]) ** 2  # Position error
 
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
@@ -383,9 +382,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 25
+        S = S * 20
 
-        e_s = (x[13:] - x_ref[13:])**2
+        e_s = (x[13:] - x_ref[13:]) ** 2
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
@@ -453,7 +452,7 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
 
         L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[0:3],x0[3:6],x0[6:10], x0[10:13])
+        s_dot = self.model.feat_dyn_f(L_val, x0[0:3], x0[3:6], x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
 
         # print(f"Feature dynamics s_dot: {s_dot}")
@@ -462,7 +461,6 @@ class SpacecraftVSMPC:
         ocp_solver = self.ocp_solver
 
         x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
-
 
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
             self.define_lyapunov_weight(
@@ -477,8 +475,8 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = np.zeros(1)
-            # w_s = np.ones(1)
+            w_p = np.zeros(1)
+            w_s = np.ones(1)
 
             if w_p < 0.05:
                 self.ibvs_mode = True
@@ -511,16 +509,15 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
 
-        print(f"===== Lyapunov Values =====")
-        # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-        print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+        # self.debug_transformations(x0)
+
+        # print(f"===== Lyapunov Values =====")
+        # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+        # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
         # print(
         #     f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
         # )
         # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
-        U, S, Vt = np.linalg.svd(L_val)          #  S = [σ1 … σ6]
-        kappa = S.max() / S.min()
-        print(f"Condition number of L: {kappa:.2f}")
 
         if verbose:
             if hybrid_mode and not self.ibvs_mode:
@@ -554,3 +551,115 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot
+
+    def debug_transformations(self, x0):
+        def skew_symmetric(v):
+            """Create skew-symmetric matrix from 3D vector"""
+            return cs.vertcat(
+                cs.horzcat(0, -v[2], v[1]),
+                cs.horzcat(v[2], 0, -v[0]),
+                cs.horzcat(-v[1], v[0], 0)
+            )
+
+        
+        def adjoint_matrix(T):
+            """Compute 6x6 adjoint matrix from 4x4 transformation matrix"""
+            R = T[0:3, 0:3]  # Extract rotation part
+            t = T[0:3, 3]    # Extract translation part
+            
+            # Adjoint matrix structure:
+            # Ad_T = [R    [t]×R]
+            #        [0      R ]
+            t_skew = skew_symmetric(t)
+            t_skew_R = cs.mtimes(t_skew, R)
+            
+            # Build 6x6 adjoint matrix
+            Ad_T = cs.vertcat(
+                cs.horzcat(R, t_skew_R),
+                cs.horzcat(cs.DM.zeros(3, 3), R)
+            )
+            
+            return Ad_T
+        def q_to_rot_mat(q):
+            qw, qx, qy, qz = q[0], q[1], q[2], q[3]
+
+            rot_mat = cs.vertcat(
+                cs.horzcat(
+                    1 - 2 * (qy**2 + qz**2),
+                    2 * (qx * qy - qw * qz),
+                    2 * (qx * qz + qw * qy),
+                ),
+                cs.horzcat(
+                    2 * (qx * qy + qw * qz),
+                    1 - 2 * (qx**2 + qz**2),
+                    2 * (qy * qz - qw * qx),
+                ),
+                cs.horzcat(
+                    2 * (qx * qz - qw * qy),
+                    2 * (qy * qz + qw * qx),
+                    1 - 2 * (qx**2 + qy**2),
+                ),
+            )
+
+            return rot_mat
+
+        p = x0[0:3]
+        v = x0[3:6]
+        q = x0[6:10]
+        w = x0[10:13]
+
+        # 1. map to baes transformation
+        R_mb = q_to_rot_mat(q)  # rotation from map to base
+        T_mb = cs.vertcat(cs.horzcat(R_mb, p), cs.DM([[0, 0, 0, 1]]))
+        print("Map to Base Transform (T_mb):")
+        print(T_mb)
+
+        # 2. Base to Camera transformation, # T_bc : base --> camera  (src <- dest)
+        R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+        t_bc = cs.DM([-0.09, 0.0, 0.51])
+        T_bc = cs.vertcat(cs.horzcat(R_bc, t_bc), cs.DM([[0, 0, 0, 1]]))
+        print("\nBase to Camera Transform (T_bc):")
+        print(T_bc)
+
+        # 3. Camera to Optical transformation
+        R_optical_cam = cs.DM(
+            [
+                [0, -1, 0],  # x_optical = -y_cam
+                [0, 0, -1],  # y_optical = -z_cam
+                [1, 0, 0],  # z_optical = x_cam
+            ]
+        )
+        T_cam_optical = cs.vertcat(
+            cs.horzcat(R_optical_cam.T, cs.DM([0, 0, 0])), cs.DM([[0, 0, 0, 1]])
+        )
+        print("\nCamera to Optical Transform (T_cam_optical):")
+        print(T_cam_optical)
+
+        # Full transformation chain: Map -> Base -> Camera -> Optical
+        T_mc = cs.mtimes(T_mb, T_bc)  # Map to Camera
+
+        print ("\nMap to Camera Transform (T_mc):")
+        print(T_mc)
+        T_mo = cs.mtimes(T_mc, T_cam_optical)  # Map to Optical
+
+        print("\nFull Map to Optical Transform (T_mo):")
+        print(T_mo)
+
+        # now we debug twist transformation
+        twist_map = cs.vertcat(v, w)
+        # Transform twist from map to optical frame using adjoint
+        T_om = cs.inv(T_mo)
+        Ad_T_om = adjoint_matrix(T_om)
+        print("\nAdjoint Matrix of T_om:")
+        print(Ad_T_om)
+
+        # Apply adjoint transformation to get twist in optical frame
+        twist_optical = cs.mtimes(Ad_T_om, twist_map)
+        print("\nTwist in Optical Frame (twist_optical):")
+        v_optical = twist_optical[0:3]
+        w_optical = twist_optical[3:6]
+        print(f"Linear velocity in optical frame: {float(v_optical[0]):.3f}, {float(v_optical[1]):.3f}, {float(v_optical[2]):.3f}")
+        print(f"Angular velocity in optical frame: {float(w_optical[0]):.3f}, {float(w_optical[1]):.3f}, {float(w_optical[2]):.3f}")
+
+
+    

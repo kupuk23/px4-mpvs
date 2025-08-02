@@ -62,6 +62,26 @@ class SpacecraftVSModel:
         # BEARING-ERROR variables
         self.theta_max_deg = 10
 
+    def adjoint_matrix(self,T):
+
+        """Compute 6x6 adjoint matrix from 4x4 transformation matrix"""
+        R = T[0:3, 0:3]  # Extract rotation part
+        t = T[0:3, 3]    # Extract translation part
+        
+        # Adjoint matrix structure:
+        # Ad_T = [R    [t]×R]
+        #        [0      R ]
+        t_skew = self.skew_symmetric_3x3(t)
+        t_skew_R = cs.mtimes(t_skew, R)
+        
+        # Build 6x6 adjoint matrix
+        Ad_T = cs.vertcat(
+            cs.horzcat(R, t_skew_R),
+            cs.horzcat(cs.DM.zeros(3, 3), R)
+        )
+        
+        return Ad_T
+
     def get_interaction_matrix(self, s: cs.MX, Z: cs.MX) -> cs.MX:
         L = cs.MX.zeros(s.shape[0], 6)
 
@@ -92,48 +112,44 @@ class SpacecraftVSModel:
 
         return L  # cs.MX((8,6))
 
-    def adj_transform_inverse(self, R, p):
-        Rt = R.T
-        return cs.vertcat(
-            cs.horzcat(Rt, -cs.mtimes(Rt, self.skew_symmetric_3x3(p))),
-            cs.horzcat(cs.DM.zeros(3, 3), Rt),
-        )
+   
 
     def get_feature_dynamics(self, L, p, v, q, w):
         # Image feature dynamics equation
 
         # transform twist from map to camera frame.
-        twist_map = cs.vertcat(v, w)  # 6x1
-        # twist_map -> twist_base:
-        R_mb = self.q_to_rot_mat(q)  # rotation matrix from map to base frame
-        twist_base = cs.mtimes(self.adj_transform_inverse(R_mb, p), twist_map)  # 6x6
+        # 1. map to base transformation
+        R_mb = self.q_to_rot_mat(q)  # rotation from map to base
+        T_mb = cs.vertcat(cs.horzcat(R_mb, p), cs.DM([[0, 0, 0, 1]]))
 
-        v_base = cs.mtimes(R_mb.T, (v - cs.cross(w, p)))
-        w_base = cs.mtimes(R_mb.T, w)
-
-        # twist_base -> twist_cam:
+        # 2. Base to Camera transformation, # T_bc : base --> camera  (src <- dest)
         R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
-        t_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
-        twist_cam = cs.mtimes(self.adj_transform_inverse(R_bc, t_bc), twist_base)  # 6x6
+        t_bc = cs.DM([-0.09, 0.0, 0.51])
+        T_bc = cs.vertcat(cs.horzcat(R_bc, t_bc), cs.DM([[0, 0, 0, 1]]))
 
-        
+        # 3. Camera to Optical transformation
+        R_optical_cam = cs.DM(
+            [
+                [0, -1, 0],  # x_optical = -y_cam
+                [0, 0, -1],  # y_optical = -z_cam
+                [1, 0, 0],  # z_optical = x_cam
+            ]
+        )
+        T_cam_optical = cs.vertcat(
+            cs.horzcat(R_optical_cam.T, cs.DM([0, 0, 0])), cs.DM([[0, 0, 0, 1]])
+        )
 
-        # convert to openCV camera frame reference, x_im -> -y_cam, y_im -> -z_cam, z_im -> x_cam
-        R_cam_to_optical = cs.DM([
-            [0, -1,  0],  # x_optical = -y_cam
-            [0,  0, -1],  # y_optical = -z_cam  
-            [1,  0,  0]   # z_optical = x_cam
-        ])
+        # Full transformation chain: Map -> Base -> Camera -> Optical
+        T_mc = cs.mtimes(T_mb, T_bc)  # Map to Camera
+        T_mo = cs.mtimes(T_mc, T_cam_optical)  # Map to Optical
+        # now we debug twist transformation
+        twist_map = cs.vertcat(v, w)
+        # Transform twist from map to optical frame using adjoint
+        T_om = cs.inv(T_mo)
+        Ad_T_om = self.adjoint_matrix(T_om)
 
-        # Transform the twist properly
-        # v_cam = twist_cam[:3]
-        # w_cam = twist_cam[3:]
-        v_cam = cs.mtimes(R_bc, (v_base - cs.cross(w_base, t_bc)))
-        w_cam = cs.mtimes(R_bc, w_base)
-        v_optical = cs.mtimes(R_cam_to_optical, v_cam)
-        w_optical = cs.mtimes(R_cam_to_optical, w_cam)
-        twist_optical = cs.vertcat(v_optical, w_optical)
-
+        # Apply adjoint transformation to get twist in optical frame
+        twist_optical = cs.mtimes(Ad_T_om, twist_map)
         s_dot_vec = cs.mtimes(L, twist_optical)  # 8x1
         return s_dot_vec
 

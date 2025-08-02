@@ -143,8 +143,13 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([-0.4, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        # self.setpoint_position = np.array([-0.6, 0.0, 0.0])  # inverted z and y axis
+        # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+
+
+        self.setpoint_position = np.array([1.48725343, -0.8708216, 0.0])  
+        self.setpoint_attitude = np.array([0.70656116, 0.0, 0.0, 0.70735128])  
+
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
