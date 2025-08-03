@@ -43,7 +43,7 @@ class CircleFeatureDetector:
             window_name: Name of the OpenCV window for visualization
         """
 
-        self.tune_hsv = True  # Enable real-time HSV tuning
+        self.tune_hsv = False  # Enable real-time HSV tuning
         self.match_threshold = match_threshold
 
         self.params = cv2.SimpleBlobDetector_Params()
@@ -60,7 +60,7 @@ class CircleFeatureDetector:
         self.params.minConvexity = 0.95
 
         self.params.filterByInertia = True
-        self.params.minInertiaRatio = 0.75
+        self.params.minInertiaRatio = 0.6
 
         self.params.minDistBetweenBlobs = 10
 
@@ -78,7 +78,7 @@ class CircleFeatureDetector:
 
         # HSV threshold parameters for real-time tuning
         self.hsv_lower = [0, 0, 0]
-        self.hsv_upper = [179, 230, 145]
+        self.hsv_upper = [179, 230, 170]
         
         # Create trackbars for HSV tuning if visualization is enabled
         if self.visualize and self.tune_hsv:

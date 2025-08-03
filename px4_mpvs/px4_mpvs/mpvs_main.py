@@ -94,10 +94,10 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-                [[131,  76],
-    [567,  49],
-    [117, 279],
-    [514, 234]]
+                [[114,  71],
+ [581,  38],
+ [ 95, 287],
+ [538, 244]]
         ).flatten()
 
         self.srv = self.create_service(
@@ -139,6 +139,8 @@ class SpacecraftIBMPVS(Node):
 
         self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
         self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
+        # self.vehicle_local_position = np.array([1.79763114, -0.95280247, 0.0])
+        # self.vehicle_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
         # self.setpoint_position = np.array([0.0, 0.0, 0.0])
@@ -153,7 +155,7 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
 
         # initial pose for IBVS testing
-        self.setpoint_position = np.array([1.79763114, -0.95280247, 0.0])
+        self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
         self.setpoint_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
 
 

@@ -50,7 +50,7 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_p = 7e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 3e3  # Quaternion scalar part, 8e3
         self.w_features = 45e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 60 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -279,7 +279,7 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(20 - (19 * w_p))  # Scale for velocity error
+        v_scale = cs.sqrt(25 - (24 * w_p))  # Scale for velocity error
         w_scale = cs.sqrt(40 - (39 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 

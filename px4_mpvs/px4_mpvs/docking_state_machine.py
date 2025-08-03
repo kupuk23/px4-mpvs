@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from px4_mpvs.utils.ros_utils import vector2PoseMsg
 
@@ -97,9 +98,9 @@ def docking_state_machine(node):
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        print(f"Current features: {feature_current}")
-        print(f"feature depth: {node.Z}")
-        print(f"Feature errors: {error}")
+        # print(f"Current features: {feature_current}")
+        # print(f"feature depth: {node.Z}")
+        # print(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()
@@ -138,7 +139,7 @@ def docking_state_machine(node):
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.pre_dock_timer > 1:
+        if current_time - node.pre_dock_timer > 0.3:
             docking_duration = current_time - node.hybrid_start_time
             node.statistics["hybrid_duration"] = docking_duration
             node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
@@ -146,7 +147,8 @@ def docking_state_machine(node):
             print("Docking completed in {:.2f} seconds".format(docking_duration))
             # save the statistics into pickle
             date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
+            os.makedirs(f"/home/tafarrel_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}", exist_ok=True)
+            pickle_filename = f"/home/tafarrel_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             

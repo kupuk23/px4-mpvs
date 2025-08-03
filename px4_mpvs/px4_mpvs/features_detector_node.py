@@ -30,7 +30,7 @@ class MarkerDetectorNode(Node):
         super().__init__("marker_detector_node")
         self.bridge = CvBridge()
 
-        self.save_image = True
+        self.save_image = False
         # Get parameters
 
         self.debug = self.declare_parameter("debug", True).value
@@ -90,7 +90,7 @@ class MarkerDetectorNode(Node):
         self.detector = CircleFeatureDetector(
             min_circle_radius=20,
             max_circle_radius=1200,
-            circularity_threshold=0.85,
+            circularity_threshold=0.8,
             match_threshold=5.0,
             visualize=self.visualize,
             debug=self.debug,
@@ -98,10 +98,10 @@ class MarkerDetectorNode(Node):
 
         # Define target points for the markers
         self.target_points = np.array(
-            [[131,  76],
- [567,  49],
- [117, 279],
- [514, 234]],
+            [[114,  71],
+ [581,  38],
+ [ 95, 287],
+ [538, 244]],
             dtype=np.int16,
         )
 
