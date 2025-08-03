@@ -50,9 +50,9 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 5e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 8e2  # Quaternion scalar part, 8e3
-        self.w_features = 5e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_q = 3e3  # Quaternion scalar part, 8e3
+        self.w_features = 45e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
 
         self.x0 = (
             x0
@@ -100,8 +100,9 @@ class SpacecraftVSMPC:
         )
         self.model.build_feature_dyn_fun()
         self.model.build_interaction_mat_fun()
+        # self.model.build_debug_functions()
 
-    def set_bearing_constraints(self, ocp, x0):
+    def set_constraints(self, ocp, x0):
         Fmax = self.model.max_thrust
         # constraint bounds -inf <= g(x) <= 0
         ocp.constraints.lh = np.array([-self.ineq_bounds])
@@ -124,9 +125,9 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
 
         # set bounds for image features (x coordinates)
-        # ocp.constraints.idxbx = np.array([13, 15, 17, 19])
-        # ocp.constraints.lbx = np.array([self.s_min] * 4)
-        # ocp.constraints.ubx = np.array([self.s_max] * 4)
+        ocp.constraints.idxbx = np.array([13, 15, 17, 19])
+        ocp.constraints.lbx = np.array([self.s_min] * 4)
+        ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -134,16 +135,86 @@ class SpacecraftVSMPC:
         ocp.constraints.idxbu = np.array([0, 1, 2, 3])
         ocp.constraints.x0 = x0
 
-        # set bounds for velocity
-        ocp.constraints.idxbx = np.array(
-            [3, 4, 5, 10, 11, 12]
-        )  # vx, vy, vz, ωx, ωy, ωz
-        ocp.constraints.lbx = np.array([-self.vel_limit] * 6)
-        ocp.constraints.ubx = np.array([self.vel_limit] * 6)
+        # set constraints on X
+        ocp.constraints.lbx = np.array(
+            [
+                -5,
+                -5,
+                -5,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+            ]
+        )
+        ocp.constraints.ubx = np.array(
+            [
+                +5,
+                +5,
+                +5,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+                +self.vel_limit,
+            ]
+        )
+        ocp.constraints.idxbx = np.array([0, 1, 2, 3, 4, 5, 10, 11, 12])
+
+        # set constraints on X at the end of the horizon
+        ocp.constraints.lbx_e = np.array(
+            [
+                -5,
+                -5,
+                -5,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+                -self.vel_limit,
+            ]
+        )
+        ocp.constraints.ubx_e = np.array(
+            [
+                +5,
+                +5,
+                +5,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+                self.vel_limit,
+            ]
+        )
+        ocp.constraints.idxbx_e = np.array([0, 1, 2, 3, 4, 5, 10, 11, 12])
+
+        use_soft_constraints = False
+        if use_soft_constraints:
+            # set weights slack variables for X constraints
+            ocp.constraints.idxsbx = np.arange(len(ocp.constraints.idxbx))
+            ocp.cost.Zl = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.Zu = np.array([1e6] * len(ocp.constraints.idxsbx))
+            ocp.cost.zl = np.array([0.0] * len(ocp.constraints.idxsbx))
+            ocp.cost.zu = np.array([0.0] * len(ocp.constraints.idxsbx))
+
+            # set weights slack variables for X_e constraints
+            ocp.constraints.idxsbx_e = np.arange(len(ocp.constraints.idxbx_e))
+            ocp.cost.Zl_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.Zu_e = np.array([1e6] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zl_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
+            ocp.cost.zu_e = np.array([0.0] * len(ocp.constraints.idxsbx_e))
 
         return ocp
 
     def setup(self, x0, N_horizon, Tf, p_obj0, Z0):
+        def to_DM(A):
+            return cs.DM(A) if isinstance(A, np.ndarray) else A
+
         # create ocp object to formulate the OCP
         ocp = AcadosOcp()
         # set model
@@ -159,6 +230,38 @@ class SpacecraftVSMPC:
         ocp.dims.N = N_horizon
         ocp.solver_options.N_horizon = N_horizon
 
+        # Initialize parameters
+        p_obj = ocp.model.p[0:3]
+        Z = ocp.model.p[3:7]
+        w_p = ocp.model.p[7]
+        w_s = ocp.model.p[8]  # Feature dynamics
+
+        Qp_p = self.Qp_p  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        Qp_q = self.Qp_q  # Quaternion scalar part, 8e3
+        w_features = self.w_features  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+
+        # set weights for the cost function
+        Q = [
+            *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+            *[2e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+            # Qp_q,
+            Qp_q,
+            *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+        ]
+
+        S = [
+            *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        ]
+
+        Q_e = [element * 30 for element in Q]
+        S_e = [element * 60 for element in S]
+
+        R_mat = [1e1] * 4
+
+        ocp.cost.W_0 = np.diag(Q + S + R_mat)
+        ocp.cost.W = np.diag(Q + S + R_mat)
+        ocp.cost.W_e = np.diag(Q_e + S_e)
+
         # References:
         x_ref = cs.MX.sym("x_ref", (nx, 1))  # 13 robot states + 8 features states
         u_ref = cs.MX.sym("u_ref", (nu, 1))
@@ -170,105 +273,48 @@ class SpacecraftVSMPC:
         x = ocp.model.x
         u = ocp.model.u
 
-        q_error = quat_error(x[6:10], x_ref[6:10])  # Quaternion error
+        # Error scaling for x_error
+        # p : wp
+        # v : 50-(49wp)
+        # q : wp
+        # w : 10-(9wp)
+        # s : 1-wp
+        v_scale = cs.sqrt(20 - (19 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(40 - (39 * w_p))  # Scale for angular velocity error
+        s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
-        x_error = x[0:3] - x_ref[0:3]
-        x_error = cs.vertcat(x_error, x[3:6] - x_ref[3:6])
-        # x_error = cs.vertcat(x_error, (1 - (x[6:10].T @ x_ref[6:10]) ** 2) / 2)
-        x_error = cs.vertcat(x_error, q_error)  # Quaternion error - vector part (3x1)
-
-        # x_error = cs.vertcat(x_error, 2*(q_ref))
-        x_error = cs.vertcat(x_error, x[10:13] - x_ref[10:13])
-        x_error = cs.vertcat(x_error, x[13:] - x_ref[13:])
-
+        x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
+        x_error = cs.vertcat(x_error, v_scale * (x[3:6] - x_ref[3:6]))
+        x_error = cs.vertcat(
+            x_error, cs.sqrt(w_p) * (1 - (x[6:10].T @ x_ref[6:10]) ** 2)
+        )
+        x_error = cs.vertcat(x_error, w_scale * (x[10:13] - x_ref[10:13]))
+        x_error = cs.vertcat(x_error, s_scale * (x[13:] - x_ref[13:]))
         u_error = u - u_ref
 
-        # define cost with parametric reference
-        ocp.cost.cost_type = "EXTERNAL"
-        ocp.cost.cost_type_e = "EXTERNAL"
-
-        # Initialize parameters
-        p_obj = ocp.model.p[0:3]
-        Z = ocp.model.p[3:7]
-        w_p = ocp.model.p[7]
-        w_s = ocp.model.p[8]  # Feature dynamics
-
-        ocp = self.set_bearing_constraints(ocp, x0)
-
         ocp.model.p = cs.vertcat(x_ref, u_ref, p_obj, Z, w_p, w_s)
+
+        # define cost with parametric reference
+        ocp.cost.cost_type = "NONLINEAR_LS"
+        ocp.cost.cost_type_e = "NONLINEAR_LS"
+        ocp.cost.cost_type_0 = "NONLINEAR_LS"
+
+        ocp.model.cost_y_expr_0 = cs.vertcat(x_error, u_error)
+        ocp.model.cost_y_expr = cs.vertcat(x_error, u_error)
+        ocp.model.cost_y_expr_e = x_error
+
+        ocp.cost.yref_0 = np.zeros(ocp.model.cost_y_expr_0.shape[0])
+        ocp.cost.yref = np.zeros(ocp.model.cost_y_expr.shape[0])
+        ocp.cost.yref_e = np.zeros(ocp.model.cost_y_expr_e.shape[0])
+
+        ocp = self.set_constraints(ocp, x0)
+
+        # set initial state
+        ocp.constraints.x0 = x0
 
         p_0 = np.concatenate(
             (x0, np.zeros(nu), p_obj0, Z0, np.ones(1), np.zeros(1))
         )  # Z = feature depth
-
-        Qp_p = self.Qp_p  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        Qp_q = self.Qp_q  # Quaternion scalar part, 8e3
-        w_features = self.w_features  # Image feature weights, 0 pbvs, 5e-3 for ibvs
-
-        # set weights for the cost function
-        Qp = np.diag(
-            [
-                *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[1e3] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                # Qp_q,
-                *[Qp_q] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[4e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
-            ]
-        )
-
-        Qs = np.diag(
-            [
-                *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-                *[70e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
-                # 0,
-                *[0] * 3,  # Quaternion scalar part, 8e3 pbvs, 0 for ibvs
-                *[5e3] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
-            ]
-        )
-
-        S_s = np.diag(
-            [
-                *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
-            ]
-        )
-
-        # w_p, V_dot = self.define_lyapunov_weight(x, x_ref, Qp_p, Qp_q, S_s, s_dot)
-
-        # w_p = cs.if_else(
-        #     hybrid_mode > 0.5, w_p, 1.0
-        # )  # change w_p to 0 for discrete switch testing
-
-        Q = w_p * Qp + (1.0 - w_p) * Qs
-
-        S = (1.0 - w_p) * S_s
-
-        Q_e = 20 * Q
-        S_e = 110 * S
-
-        # TODO: debug the Q and S matrices in hybrid mode
-
-        R_mat = np.diag([1e1] * 4)
-
-        # ocp.model.cost_expr_ext_cost = (
-        #     x_error[:10].T @ Q @ x_error[:10]
-        #     + u_error.T @ R_mat @ u_error
-        #     + x_error[10:].T @ S @ x_error[10:]
-        # )
-
-        # ocp.model.cost_expr_ext_cost_e = (
-        #     x_error[:10].T @ Q_e @ x_error[:10] + x_error[10:].T @ S_e @ x_error[10:]
-        # )
-
-        ocp.model.cost_expr_ext_cost = (
-            x_error[:12].T @ Q @ x_error[:12]
-            + u_error.T @ R_mat @ u_error
-            + x_error[12:].T @ S @ x_error[12:]
-        )
-
-        ocp.model.cost_expr_ext_cost_e = (
-            x_error[:12].T @ Q_e @ x_error[:12] + x_error[12:].T @ S_e @ x_error[12:]
-        )
-
         ocp.parameter_values = p_0
 
         # set options
@@ -282,9 +328,7 @@ class SpacecraftVSMPC:
 
         use_RTI = True
         if use_RTI:
-            ocp.solver_options.nlp_solver_type = (
-                "SQP_RTI"  # SQP_RTI, SQP, non-sqp TODO : Look for other solvers
-            )
+            ocp.solver_options.nlp_solver_type = "SQP_RTI"
             ocp.solver_options.sim_method_num_stages = 4
 
             ocp.solver_options.sim_method_num_steps = 3
@@ -320,7 +364,7 @@ class SpacecraftVSMPC:
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = x[0:3] - x_ref[0:3]  # Position error
+        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
 
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
@@ -332,9 +376,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 25
+        S = S * 20
 
-        e_s = x[13:] - x_ref[13:]
+        e_s = (x[13:] - x_ref[13:])**2
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
@@ -346,18 +390,21 @@ class SpacecraftVSMPC:
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
         softmax_s = cs.exp(-k * Vs_dot)
+
+        # cap softmax values to avoid numerical issues
+        softmax_p = cs.fmax(softmax_p, 1e3)
+        softmax_s = cs.fmax(softmax_s, 1e3)
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights
         w_s = softmax_s / (softmax_p + softmax_s + eps)
         w_p = 1.0 - w_s
 
-
         # Ratio method
-        Vs_dot = cs.if_else(
-            Vs_dot >= 0, 0, Vs_dot
-        )
-        w_p = cs.if_else(Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps))  # ensure w_p is non-negative
+        Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
+        w_p = cs.if_else(
+            Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
+        )  # ensure w_p is non-negative
         # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
         w_s = 1.0 - w_p  # w_s is always non-negative
 
@@ -394,6 +441,11 @@ class SpacecraftVSMPC:
             )
             zero_ref[6] = 1.0
 
+        # preparation phase
+        ocp_solver = self.ocp_solver
+
+        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
+
         # ref[6:10, :] = self.debug_quaternion_reference(x0, ref[:, 0])
         # q_err = quat_error(x0[6:10], ref[6:10,0])  # Quaternion error
         # # print the quaternion error for debugging
@@ -403,16 +455,7 @@ class SpacecraftVSMPC:
         Z = Z if Z is not None else self.Z0
 
         L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
-        s_dot = s_dot.full().flatten()  # Convert to numpy array
-
-        # preparation phase
-        ocp_solver = self.ocp_solver
-
-        x_ref = ref[:-4, 0] if ref is not None else zero_ref[:-4, 0]
-
-        L_val = self.model.L_f(x0[13:], Z)
-        s_dot = self.model.feat_dyn_f(L_val, x0[3:6], x0[10:13])
+        s_dot = self.model.feat_dyn_f(L_val, x0[0:3], x0[3:6], x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
 
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
@@ -430,7 +473,7 @@ class SpacecraftVSMPC:
             # TEST DISCRETE
             w_p = np.zeros(1)
             w_s = np.ones(1)
-            
+
             if w_p < 0.05:
                 self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:
@@ -458,19 +501,27 @@ class SpacecraftVSMPC:
 
         # set initial state
         ocp_solver.set(0, "lbx", x0.flatten())
-        ocp_solver.set(0, "ubx", x0.flatten()) 
+        ocp_solver.set(0, "ubx", x0.flatten())
 
         status = ocp_solver.solve()
 
+        # print(f"===== Lyapunov Values =====")
+        # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+        # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+        # print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
+        # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+
         if verbose:
+            # self.debug_transformations(x0)
             if hybrid_mode and not self.ibvs_mode:
-                print(f"===== Lyapunov Values =====")
-                # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-                print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-                print(
-                    f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-                )
-                print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+                # print(f"===== Lyapunov Values =====")
+                # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+                # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+                # print(
+                #     f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+                # )
+                # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+                pass
 
             # ocp_solver.dump_last_qp_to_json(filename="last_qp.json", overwrite=True)
 
@@ -483,6 +534,8 @@ class SpacecraftVSMPC:
         nx = self.model.get_acados_model().x.size()[0]
         nu = self.model.get_acados_model().u.size()[0]
 
+        
+
         simX = np.ndarray((N + 1, nx))
         simU = np.ndarray((N, nu))
 
@@ -492,4 +545,119 @@ class SpacecraftVSMPC:
             simU[i, :] = self.ocp_solver.get(i, "u")
         simX[N, :] = self.ocp_solver.get(N, "x")
 
+        # debug the predicted twist on the first step
+        # v_pred = simX[0, 3:6]
+        # w_pred = simX[0, 10:13]
+        # print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
+
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot
+
+
+    def debug_transformations(self, x0):
+        def skew_symmetric(v):
+            """Create skew-symmetric matrix from 3D vector"""
+            return cs.vertcat(
+                cs.horzcat(0, -v[2], v[1]),
+                cs.horzcat(v[2], 0, -v[0]),
+                cs.horzcat(-v[1], v[0], 0)
+            )
+
+        
+        def adjoint_matrix(T):
+            """Compute 6x6 adjoint matrix from 4x4 transformation matrix"""
+            R = T[0:3, 0:3]  # Extract rotation part
+            t = T[0:3, 3]    # Extract translation part
+            
+            # Adjoint matrix structure:
+            # Ad_T = [R    [t]×R]
+            #        [0      R ]
+            t_skew = skew_symmetric(t)
+            t_skew_R = cs.mtimes(t_skew, R)
+            
+            # Build 6x6 adjoint matrix
+            Ad_T = cs.vertcat(
+                cs.horzcat(R, t_skew_R),
+                cs.horzcat(cs.DM.zeros(3, 3), R)
+            )
+            
+            return Ad_T
+        def q_to_rot_mat(q):
+            qw, qx, qy, qz = q[0], q[1], q[2], q[3]
+
+            rot_mat = cs.vertcat(
+                cs.horzcat(
+                    1 - 2 * (qy**2 + qz**2),
+                    2 * (qx * qy - qw * qz),
+                    2 * (qx * qz + qw * qy),
+                ),
+                cs.horzcat(
+                    2 * (qx * qy + qw * qz),
+                    1 - 2 * (qx**2 + qz**2),
+                    2 * (qy * qz - qw * qx),
+                ),
+                cs.horzcat(
+                    2 * (qx * qz - qw * qy),
+                    2 * (qy * qz + qw * qx),
+                    1 - 2 * (qx**2 + qy**2),
+                ),
+            )
+
+            return rot_mat
+
+        p = x0[0:3]
+        v = x0[3:6]
+        q = x0[6:10]
+        w = x0[10:13]
+
+        # 1. map to baes transformation
+        R_mb = q_to_rot_mat(q)  # rotation from map to base
+        T_mb = cs.vertcat(cs.horzcat(R_mb, p), cs.DM([[0, 0, 0, 1]]))
+        print("Map to Base Transform (T_mb):")
+        print(T_mb)
+
+        # 2. Base to Camera transformation, # T_bc : base --> camera  (src <- dest)
+        R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+        t_bc = cs.DM([-0.09, 0.0, 0.51])
+        T_bc = cs.vertcat(cs.horzcat(R_bc, t_bc), cs.DM([[0, 0, 0, 1]]))
+        print("\nBase to Camera Transform (T_bc):")
+        print(T_bc)
+
+        # 3. Camera to Optical transformation
+        R_optical_cam = cs.DM(
+            [
+                [0, -1, 0],  # x_optical = -y_cam
+                [0, 0, -1],  # y_optical = -z_cam
+                [1, 0, 0],  # z_optical = x_cam
+            ]
+        )
+        T_cam_optical = cs.vertcat(
+            cs.horzcat(R_optical_cam.T, cs.DM([0, 0, 0])), cs.DM([[0, 0, 0, 1]])
+        )
+        print("\nCamera to Optical Transform (T_cam_optical):")
+        print(T_cam_optical)
+
+        # Full transformation chain: Map -> Base -> Camera -> Optical
+        T_mc = cs.mtimes(T_mb, T_bc)  # Map to Camera
+
+        print ("\nMap to Camera Transform (T_mc):")
+        print(T_mc)
+        T_mo = cs.mtimes(T_mc, T_cam_optical)  # Map to Optical
+
+        print("\nFull Map to Optical Transform (T_mo):")
+        print(T_mo)
+
+        # now we debug twist transformation
+        twist_map = cs.vertcat(v, w)
+        # Transform twist from map to optical frame using adjoint
+        T_om = cs.inv(T_mo)
+        Ad_T_om = adjoint_matrix(T_om)
+        print("\nAdjoint Matrix of T_om:")
+        print(Ad_T_om)
+
+        # Apply adjoint transformation to get twist in optical frame
+        twist_optical = cs.mtimes(Ad_T_om, twist_map)
+        print("\nTwist in Optical Frame (twist_optical):")
+        v_optical = twist_optical[0:3]
+        w_optical = twist_optical[3:6]
+        print(f"Linear velocity in optical frame: {float(v_optical[0]):.3f}, {float(v_optical[1]):.3f}, {float(v_optical[2]):.3f}")
+        print(f"Angular velocity in optical frame: {float(w_optical[0]):.3f}, {float(w_optical[1]):.3f}, {float(w_optical[2]):.3f}")

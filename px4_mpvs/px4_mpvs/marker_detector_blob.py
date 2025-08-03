@@ -43,7 +43,7 @@ class CircleFeatureDetector:
             window_name: Name of the OpenCV window for visualization
         """
 
-        self.tune_hsv = False  # Enable real-time HSV tuning
+        self.tune_hsv = True  # Enable real-time HSV tuning
         self.match_threshold = match_threshold
 
         self.params = cv2.SimpleBlobDetector_Params()

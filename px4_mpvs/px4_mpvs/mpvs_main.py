@@ -71,6 +71,7 @@ from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
+from std_srvs.srv import SetBool
 
 from px4_mpvs.docking_state_machine import docking_state_machine
 
@@ -82,7 +83,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.build = True  # Set to False after the first run to avoid rebuilding
         self.sitl = False
 
         self.aligning_threshold = 0.2
@@ -93,19 +94,20 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [
-                [64, 158],
-                [287, 182],
-                [119, 309],
-                [497, 258],
-            ],
+                [[131,  76],
+    [567,  49],
+    [117, 279],
+    [514, 234]]
         ).flatten()
 
+        self.srv = self.create_service(
+            SetBool, "/run_debug", self.aligned_callback_enabled
+        )
         
 
         # Get namespace
-        self.namespace = self.declare_parameter("namespace", "").value
-        self.namespace_prefix = f"/{self.namespace}" if self.namespace else "pop"
+        self.namespace = self.declare_parameter("namespace", "pop").value
+        self.namespace_prefix = f"/{self.namespace}" if self.namespace else ""
 
         # Get setpoint from rviz (true/false)
         self.setpoint_from_rviz = self.declare_parameter(
@@ -143,12 +145,22 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([0.0, 0.0, 0.0])  # inverted z and y axis
-        self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  # invered z and y axis, default = np.array([1.0, 0.0, 0.0, 0.0]) 
+        # self.setpoint_position = np.array([2.0, 0.0, 0.0]) 
+        # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
+
+        # setpoint for docking #
+        # self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
+        # self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
+
+        # initial pose for IBVS testing
+        self.setpoint_position = np.array([1.79763114, -0.95280247, 0.0])
+        self.setpoint_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
+
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
+        self.old_Z = np.array([1.0, 1.0, 1.0, 1.0])  # old Z coordinates of the markers
         self.statistics = {
             "recorded_features": [],
             "recorded_wp": [],
@@ -181,10 +193,25 @@ class SpacecraftIBMPVS(Node):
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 20
+        self.ibvs_e_threshold = 35
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        # Create service for docking control
+        
+
+    def aligned_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        response.success = True
+        if request.data:
+            response.message = "Docking mode enabled"
+            self.hybrid_start_time = perf_counter()
+            self.aligned = True
+            self.aligning = False
+            self.mode = 1
+            self.get_logger().info("Docking mode enabled")
+            
+        return response
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
@@ -192,7 +219,7 @@ class SpacecraftIBMPVS(Node):
         self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
 
         self.markers_sub = self.create_subscription(
-            Float32MultiArray, "/detected_markers", self.marker_callback, 10
+            Float32MultiArray, f"{self.namespace_prefix}/detected_markers", self.marker_callback, 10
         )
 
         self.status_sub = self.create_subscription(
@@ -273,6 +300,14 @@ class SpacecraftIBMPVS(Node):
         points_3d = np.array(msg.data).reshape(-1, 3)
         self.p_markers = points_3d[:, 0:2].astype(np.int16).flatten()
         self.Z = points_3d[:, 2].astype(np.float16)
+
+        # check if all Z is non zero, otherwise, use previous values FOR THE ZEROS ELEMENT
+        if np.any(self.Z == 0):
+            self.get_logger().warn("Some Z values are zero, using previous values")
+            for i in range(len(self.Z)):
+                self.Z[i] = self.old_Z[i] if self.Z[i] == 0 else self.Z[i]
+        else:
+            self.old_Z = self.Z.copy()
 
         self.markers_detected = True
 
@@ -447,9 +482,10 @@ class SpacecraftIBMPVS(Node):
                 ]
             )
         self.get_logger().info(
-            f"NEW Setpoint position: {self.setpoint_position}"
+            f"NEW Setpoint position: {self.setpoint_position}, Attitude: {self.setpoint_attitude}"
         )
-        self.mpc.update_constraints(self.aligning)
+
+        # self.mpc.update_constraints(self.aligning)
 
         self.p_obj = np.array([-100.0, 0, 0])
 

@@ -139,15 +139,16 @@ class VisualServo(Node):
         )
 
         # Wait for service (add timeout for robustness)
-        if not self.param_client.wait_for_service(timeout_sec=1.0):
+        if not self.param_client.wait_for_service(timeout_sec=5.0):
             self.get_logger().warn(
                 "pose_estimation_pcl parameter service not available"
             )
             return
 
-        self.move_robot(self.init_pos, self.init_att)
+        # self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.aligning_callback)
+        self.stop_aligning(aligned=True)
 
     def aligning_callback(self):
         current_time = self.get_clock().now()
@@ -305,7 +306,9 @@ class VisualServo(Node):
         self.docking_enabled = request.data
         response.success = True
         if self.docking_enabled:
-            self.enable_goicp(True)  # Enable GOICP
+            # self.enable_goicp(True)  # Enable GOICP
+            # DEBUG
+
             response.message = "Docking mode enabled"
             self.get_logger().info("Docking mode enabled")
         else:

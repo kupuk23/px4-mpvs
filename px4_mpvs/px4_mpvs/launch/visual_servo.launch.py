@@ -97,17 +97,17 @@ def generate_launch_description():
                 {'use_sim_time': LaunchConfiguration("use_sim_time")},
             ]
         ),
-        Node(package='px4_mpvs',
-            namespace=namespace,
-            executable='features_detector_node',
-            name='features_detector_node',
-            # output='screen',
-            emulate_tty=True,
-            parameters=[
-                {'namespace': namespace},
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ]
-        ),
+        # Node(package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='features_detector_node',
+        #     name='features_detector_node',
+        #     # output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'namespace': namespace},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ]
+        # ),
 
         Node(
             package='px4_mpc',
@@ -128,7 +128,7 @@ def generate_launch_description():
         #     namespace=namespace,
         #     executable='test_pose_camera',
         #     name='test_pose_camera',
-        #     # output='screen',
+        #     output='screen',
         #     emulate_tty=True,
         #     parameters=[
         #         {'namespace': namespace},

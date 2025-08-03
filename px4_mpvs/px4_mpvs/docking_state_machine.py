@@ -78,6 +78,7 @@ def docking_state_machine(node):
     
     # Solve MPC
     if not node.aligned:
+        
         u_pred, x_pred, w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z
         )
@@ -85,7 +86,10 @@ def docking_state_machine(node):
     elif node.aligned and not node.pre_docked:
         u_pred, x_pred,w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
-        )  # TODO: add hybrid flag to use dynamic weight
+        ) 
+
+        node.mode= 2 if w_s == 1.0 else node.mode
+            
 
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
@@ -93,7 +97,9 @@ def docking_state_machine(node):
         error = np.linalg.norm(feature_current - feature_desired)
         node.statistics["recorded_features"].append(feature_current)
         node.statistics["features_error"].append(error)
-        # print(f"Feature errors: {error}")
+        print(f"Current features: {feature_current}")
+        print(f"feature depth: {node.Z}")
+        print(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()
@@ -132,7 +138,7 @@ def docking_state_machine(node):
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.pre_dock_timer > 3:
+        if current_time - node.pre_dock_timer > 1:
             docking_duration = current_time - node.hybrid_start_time
             node.statistics["hybrid_duration"] = docking_duration
             node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
