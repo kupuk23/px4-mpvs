@@ -98,12 +98,10 @@ class MarkerDetectorNode(Node):
 
         # Define target points for the markers
         self.target_points = np.array(
-            [
-                [64, 158],
-                [287, 182],
-                [119, 309],
-                [497, 258],
-            ],  # top-left, top-right, bottom-left, bottom-right
+            [[131,  76],
+ [567,  49],
+ [117, 279],
+ [514, 234]],
             dtype=np.int16,
         )
 
@@ -302,7 +300,7 @@ class MarkerDetectorNode(Node):
 
         if self.save_image:
             cv2.imwrite(
-                "/home/discower/tafarrel_ws/src/px4-mpvs/px4_mpvs/resource/docked_image_hw.jpg",
+                "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/resource/docked_image_hw.jpg",
                 self.image,
             )
 

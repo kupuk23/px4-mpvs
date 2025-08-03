@@ -9,7 +9,7 @@ import matplotlib
 # matplotlib.use("Agg")  # Use a non-interactive backend
 
 
-img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/docked_image_hw.jpg"
+img_path = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/resource/docked_image_hw.jpg"
 
 
 
@@ -78,7 +78,7 @@ class CircleFeatureDetector:
 
         # HSV threshold parameters for real-time tuning
         self.hsv_lower = [0, 0, 0]
-        self.hsv_upper = [179, 216, 80]
+        self.hsv_upper = [179, 230, 145]
         
         # Create trackbars for HSV tuning if visualization is enabled
         if self.visualize and self.tune_hsv:
