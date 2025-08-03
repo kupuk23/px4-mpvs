@@ -71,6 +71,7 @@ from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
+from std_srvs.srv import SetBool
 
 from px4_mpvs.docking_state_machine import docking_state_machine
 
@@ -82,7 +83,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.build = True  # Set to False after the first run to avoid rebuilding
         self.sitl = False
 
         self.aligning_threshold = 0.2
@@ -93,13 +94,15 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [[64, 158],
-                [287, 182],
-                [119, 309],
-                [497, 258],
-            ]
+                [[131,  76],
+    [567,  49],
+    [117, 279],
+    [514, 234]]
         ).flatten()
 
+        self.srv = self.create_service(
+            SetBool, "/run_debug", self.aligned_callback_enabled
+        )
         
 
         # Get namespace
@@ -146,8 +149,13 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
-        self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
+        # self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
+        # self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
+
+        # initial pose for IBVS testing
+        self.setpoint_position = np.array([1.79763114, -0.95280247, 0.0])
+        self.setpoint_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
+
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -184,11 +192,26 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 20
+        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
+        self.ibvs_e_threshold = 35
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        # Create service for docking control
+        
+
+    def aligned_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        response.success = True
+        if request.data:
+            response.message = "Docking mode enabled"
+            self.hybrid_start_time = perf_counter()
+            self.aligned = True
+            self.aligning = False
+            self.mode = 1
+            self.get_logger().info("Docking mode enabled")
+            
+        return response
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 

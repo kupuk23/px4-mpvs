@@ -45,8 +45,8 @@ class SpacecraftVSModel:
         # Camera intrinsic parameters
         self.K = np.array(
             [
-                [692.61181640625, 0.0, 472.39215087890625],  # fx, 0, cx
-                [0.0, 692.61181640625, 270.7802429199219],  # 0, fy, cy
+                [338.0833, 0.0, 313.444],  # fx, 0, cx
+                [0.0, 338.0833, 179.5257],  # 0, fy, cy
                 [0.0, 0.0, 1.0],  # 0, 0, 1
             ]
         )
@@ -92,93 +92,183 @@ class SpacecraftVSModel:
 
         return L  # cs.MX((8,6))
 
-    def get_feature_dynamics(self, L, v, w):
+    def adjoint_matrix(self,T):
+
+        """Compute 6x6 adjoint matrix from 4x4 transformation matrix"""
+        R = T[0:3, 0:3]  # Extract rotation part
+        t = T[0:3, 3]    # Extract translation part
+        
+        # Adjoint matrix structure:
+        # Ad_T = [R    [t]×R]
+        #        [0      R ]
+        t_skew = self.skew_symmetric_3x3(t)
+        t_skew_R = cs.mtimes(t_skew, R)
+        
+        # Build 6x6 adjoint matrix
+        Ad_T = cs.vertcat(
+            cs.horzcat(R, t_skew_R),
+            cs.horzcat(cs.DM.zeros(3, 3), R)
+        )
+        
+        return Ad_T
+
+    def get_feature_dynamics(self, L, p, v, q, w):
         # Image feature dynamics equation
 
-        # transform twist from base to camera frame
-        # w_cam = Rbc*w_base
-        # v_cam = Rbc*(v_base + w_base x r_bc)
-        # rotate the camera frame 180 degrees around the z-axis
-        Rbc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]]) 
-        r_bc = cs.DM([-0.09, 0.0, 0.51])  # camera translation from base frame
+        
+        # transform twist from map to camera frame.
+        # 1. map to base transformation
+        R_mb = self.q_to_rot_mat(q)  # rotation from map to base
+        T_mb = cs.vertcat(cs.horzcat(R_mb, p), cs.DM([[0, 0, 0, 1]]))
 
-        v_cam = cs.mtimes(Rbc, (v + cs.cross(w, r_bc)))
-        w_cam = cs.mtimes(Rbc, w)
-        v_image = cs.vertcat(
-            -v_cam[1],  # X_image = -Y_cam (right = -left)
-            -v_cam[2],  # Y_image = -Z_cam (down = -up)
-            v_cam[0],  # Z_image = X_cam (forward = forward)
+        # 2. Base to Camera transformation, # T_bc : base --> camera  (src <- dest)
+        R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+        t_bc = cs.DM([-0.1, 0.0, 0.58])
+        T_bc = cs.vertcat(cs.horzcat(R_bc, t_bc), cs.DM([[0, 0, 0, 1]]))
+
+        # 3. Camera to Optical transformation
+        R_optical_cam = cs.DM(
+            [
+                [0, -1, 0],  # x_optical = -y_cam
+                [0, 0, -1],  # y_optical = -z_cam
+                [1, 0, 0],  # z_optical = x_cam
+            ]
+        )
+        T_cam_optical = cs.vertcat(
+            cs.horzcat(R_optical_cam.T, cs.DM([0, 0, 0])), cs.DM([[0, 0, 0, 1]])
         )
 
-        w_image = cs.vertcat(
-            -w_cam[1],  # Roll around X_image = -pitch around Y_cam
-            -w_cam[2],  # Pitch around Y_image = -yaw around Z_cam
-            w_cam[0],  # Yaw around Z_image = roll around X_cam
-        )
-        twist = cs.vertcat(v_image, w_image)  # 6x1
-        s_dot_vec = cs.mtimes(L, twist)  # 8x1
-        # h_k = s + (s_dot * self.dt)  # 2x4 + 8x1
+        # Full transformation chain: Map -> Base -> Camera -> Optical
+        T_mc = cs.mtimes(T_mb, T_bc)  # Map to Camera
+        T_mo = cs.mtimes(T_mc, T_cam_optical)  # Map to Optical
+        # now we debug twist transformation
+        twist_map = cs.vertcat(v, w)
+        # Transform twist from map to optical frame using adjoint
+        T_om = cs.inv(T_mo)
+
+        Ad_T_om = self.adjoint_matrix(T_om)
+        # Apply adjoint transformation to get twist in optical frame
+        twist_optical = cs.mtimes(Ad_T_om.T, twist_map)
+        s_dot_vec = cs.mtimes(L, twist_optical)  # 8x1
         return s_dot_vec
-    
 
     def build_interaction_mat_fun(self):
-        s_sym = cs.MX.sym("s_fun", 8)   # image-Jacobian
-        z_sym = cs.MX.sym("Z_fun", 4)      # linear twist
+        s_sym = cs.MX.sym("s_fun", 8)  # image-Jacobian
+        z_sym = cs.MX.sym("Z_fun", 4)  # linear twist
         L_sym = self.get_interaction_matrix(s_sym, z_sym)
 
         # Now hand it to CasADi
-        self.L_f = cs.Function("L_fun",
-                                      [s_sym, z_sym],
-                                      [L_sym],
-                                      ["s", "Z"], ["L"])
-        
+        self.L_f = cs.Function("L_fun", [s_sym, z_sym], [L_sym], ["s", "Z"], ["L"])
+
     def build_feature_dyn_fun(self):
-        L_sym = cs.MX.sym("L", 8, 6)   # image-Jacobian
-        v_sym = cs.MX.sym("v", 3)      # linear twist
-        w_sym = cs.MX.sym("w", 3)      # angular twist
-        s_dot_sym = self.get_feature_dynamics(L_sym, v_sym, w_sym)
+        L_sym = cs.MX.sym("L", 8, 6)  # image-Jacobian
+        v_sym = cs.MX.sym("v", 3)  # linear twist
+        w_sym = cs.MX.sym("w", 3)  # angular twist
+        q_sym = cs.MX.sym("q", 4)  # quaternion
+        p_sym = cs.MX.sym("p", 3)  # position in inertial frame
+        s_dot_sym = self.get_feature_dynamics(L_sym, p_sym, v_sym, q_sym, w_sym)
 
         # Now hand it to CasADi
-        self.feat_dyn_f = cs.Function("feat_dyn",
-                                      [L_sym, v_sym, w_sym],
-                                      [s_dot_sym],
-                                      ["L", "v", "w"], ["s_dot"])
+        self.feat_dyn_f = cs.Function(
+            "feat_dyn",
+            [L_sym, p_sym, v_sym, q_sym, w_sym],
+            [s_dot_sym],
+            ["L", "p", "v", "q", "w"],
+            ["s_dot"],
+        )
+
+    # def build_debug_functions(self):
+    #     """Build debug functions for twist transformations"""
+    #     p_sym = cs.MX.sym("p", 3)
+    #     v_sym = cs.MX.sym("v", 3)
+    #     q_sym = cs.MX.sym("q", 4)
+    #     w_sym = cs.MX.sym("w", 3)
+
+    #     # Create twist transformations step by step
+    #     twist_map = cs.vertcat(v_sym, w_sym)
+
+    #     # Map to base transformation
+    #     R_mb = self.q_to_rot_mat(q_sym)
+    #     twist_base = cs.mtimes(self.adjoint_matrix(R_mb, p_sym), twist_map)
+
+    #     # Base to camera transformation
+    #     R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+    #     t_bc = cs.DM([-0.09, 0.0, 0.51])
+    #     twist_cam = cs.mtimes(self.adjoint_matrix(R_bc, t_bc), twist_base)
+
+    #     twist_optical = cs.vertcat(
+    #         -twist_cam[1],
+    #         -twist_cam[2],
+    #         twist_cam[0],
+    #         -twist_cam[4],
+    #         -twist_cam[5],
+    #         twist_cam[3],
+    #     )
+
+    #     # Create debug functions
+    #     self.debug_twist_map = cs.Function(
+    #         "debug_twist_map", [v_sym, w_sym], [twist_map], ["v", "w"], ["twist_map"]
+    #     )
+
+    #     self.debug_twist_base = cs.Function(
+    #         "debug_twist_base",
+    #         [p_sym, v_sym, q_sym, w_sym],
+    #         [twist_map, twist_base, R_mb],
+    #         ["p", "v", "q", "w"],
+    #         ["twist_map", "twist_base", "R_mb"],
+    #     )
+
+    #     self.debug_twist_cam = cs.Function(
+    #         "debug_twist_cam",
+    #         [p_sym, v_sym, q_sym, w_sym],
+    #         [twist_map, twist_base, twist_cam, twist_optical],
+    #         ["p", "v", "q", "w"],
+    #         ["twist_map", "twist_base", "twist_cam", "twist_optical"],
+    #     )
+
+
+    def skew_symmetric(self, v):
+        return cs.vertcat(
+            cs.horzcat(0, -v[0], -v[1], -v[2]),
+            cs.horzcat(v[0], 0, v[2], -v[1]),
+            cs.horzcat(v[1], -v[2], 0, v[0]),
+            cs.horzcat(v[2], v[1], -v[0], 0),
+        )
+
+    def skew_symmetric_3x3(self, v):
+        return cs.vertcat(
+            cs.horzcat(0, -v[2], v[1]),
+            cs.horzcat(v[2], 0, -v[0]),
+            cs.horzcat(-v[1], v[0], 0),
+        )
+
+    def q_to_rot_mat(self, q):
+        qw, qx, qy, qz = q[0], q[1], q[2], q[3]
+
+        rot_mat = cs.vertcat(
+            cs.horzcat(
+                1 - 2 * (qy**2 + qz**2),
+                2 * (qx * qy - qw * qz),
+                2 * (qx * qz + qw * qy),
+            ),
+            cs.horzcat(
+                2 * (qx * qy + qw * qz),
+                1 - 2 * (qx**2 + qz**2),
+                2 * (qy * qz - qw * qx),
+            ),
+            cs.horzcat(
+                2 * (qx * qz - qw * qy),
+                2 * (qy * qz + qw * qx),
+                1 - 2 * (qx**2 + qy**2),
+            ),
+        )
+
+        return rot_mat
 
     def get_acados_model(self) -> AcadosModel:
 
-        def skew_symmetric(v):
-            return cs.vertcat(
-                cs.horzcat(0, -v[0], -v[1], -v[2]),
-                cs.horzcat(v[0], 0, v[2], -v[1]),
-                cs.horzcat(v[1], -v[2], 0, v[0]),
-                cs.horzcat(v[2], v[1], -v[0], 0),
-            )
-
-        def q_to_rot_mat(q):
-            qw, qx, qy, qz = q[0], q[1], q[2], q[3]
-
-            rot_mat = cs.vertcat(
-                cs.horzcat(
-                    1 - 2 * (qy**2 + qz**2),
-                    2 * (qx * qy - qw * qz),
-                    2 * (qx * qz + qw * qy),
-                ),
-                cs.horzcat(
-                    2 * (qx * qy + qw * qz),
-                    1 - 2 * (qx**2 + qz**2),
-                    2 * (qy * qz - qw * qx),
-                ),
-                cs.horzcat(
-                    2 * (qx * qz - qw * qy),
-                    2 * (qy * qz + qw * qx),
-                    1 - 2 * (qx**2 + qy**2),
-                ),
-            )
-
-            return rot_mat
-
         def v_dot_q(v, q):
-            rot_mat = q_to_rot_mat(q)
+            rot_mat = self.q_to_rot_mat(q)
 
             return cs.mtimes(rot_mat, v)
 
@@ -196,7 +286,7 @@ class SpacecraftVSModel:
             r_I = p_obj - p  # Vector from robot to object in inertial frame
 
             # Transform to body frame using the rotation matrix
-            r_B = cs.mtimes(cs.transpose(q_to_rot_mat(q_rotated)), r_I)
+            r_B = cs.mtimes(cs.transpose(self.q_to_rot_mat(q_rotated)), r_I)
 
             # Compute vector norm
             r_B_norm = cs.sqrt(
@@ -274,9 +364,9 @@ class SpacecraftVSModel:
         f_expl = cs.vertcat(
             v,
             a_thrust,
-            1 / 2 * skew_symmetric(w) @ q,
+            1 / 2 * self.skew_symmetric(w) @ q,
             np.linalg.inv(self.inertia) @ (tau - cs.cross(w, self.inertia @ w)),
-            self.get_feature_dynamics(L, v, w)
+            self.get_feature_dynamics(L, p, v, q, w),
         )
 
         f_impl = xdot - f_expl
