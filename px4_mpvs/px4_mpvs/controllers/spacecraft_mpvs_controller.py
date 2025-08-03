@@ -125,9 +125,9 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
 
         # set bounds for image features (x coordinates)
-        ocp.constraints.idxbx = np.array([13, 15, 17, 19])
-        ocp.constraints.lbx = np.array([self.s_min] * 4)
-        ocp.constraints.ubx = np.array([self.s_max] * 4)
+        # ocp.constraints.idxbx = np.array([13, 15, 17, 19])
+        # ocp.constraints.lbx = np.array([self.s_min] * 4)
+        # ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])

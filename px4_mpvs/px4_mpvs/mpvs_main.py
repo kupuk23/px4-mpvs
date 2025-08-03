@@ -137,10 +137,10 @@ class SpacecraftIBMPVS(Node):
 
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
 
-        self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
-        self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
-        # self.vehicle_local_position = np.array([1.79763114, -0.95280247, 0.0])
-        # self.vehicle_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
+        # self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
+        # self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
+        self.vehicle_local_position = np.array([1.79763114, -0.95280247, 0.0])
+        self.vehicle_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
         # self.setpoint_position = np.array([0.0, 0.0, 0.0])
@@ -156,7 +156,7 @@ class SpacecraftIBMPVS(Node):
 
         # initial pose for IBVS testing
         self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
-        self.setpoint_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
+        self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
