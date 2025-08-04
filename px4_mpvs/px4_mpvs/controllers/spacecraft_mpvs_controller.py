@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 50 for element in S]
+        S_e = [element * 40 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -279,8 +279,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(25 - (24 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(40 - (39 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(30 - (29 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(60 - (59 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -546,9 +546,13 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         # debug the predicted twist on the first step
-        # v_pred = simX[0, 3:6]
-        # w_pred = simX[0, 10:13]
-        # print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
+        v_pred = simX[0, 3:6]
+        w_pred = simX[0, 10:13]
+        vx, vy, vz = v_pred[0], v_pred[1], v_pred[2]
+        w_x, w_y, w_z = w_pred[0], w_pred[1], w_pred[2]
+        current_wz = x0[12][0]  # current angular velocity z component
+        print(f"Predicted twist: vx = {vx:.4f}, vy = {vy:.4f}, w_z = {w_z:.4f}, current wz = {current_wz:.4f}")
+
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot
 

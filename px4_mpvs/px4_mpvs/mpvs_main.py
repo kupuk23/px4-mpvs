@@ -195,7 +195,7 @@ class SpacecraftIBMPVS(Node):
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 35
+        self.ibvs_e_threshold = 45
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -226,7 +226,7 @@ class SpacecraftIBMPVS(Node):
 
         self.status_sub = self.create_subscription(
             VehicleStatus,
-            f"{self.namespace_prefix}/fmu/out/vehicle_status",
+            f"{self.namespace_prefix}/fmu/out/vehicle_status_v1",
             self.vehicle_status_callback,
             qos_profile_sub,
         )

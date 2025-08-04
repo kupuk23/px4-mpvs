@@ -57,10 +57,10 @@ class CircleFeatureDetector:
         self.params.maxCircularity = 1.0
 
         self.params.filterByConvexity = True
-        self.params.minConvexity = 0.95
+        self.params.minConvexity = 0.9
 
         self.params.filterByInertia = True
-        self.params.minInertiaRatio = 0.6
+        self.params.minInertiaRatio = 0.7
 
         self.params.minDistBetweenBlobs = 10
 
