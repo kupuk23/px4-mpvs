@@ -83,7 +83,7 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = False
 
         self.aligning_threshold = 0.2
@@ -94,10 +94,10 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-                [[114,  71],
- [581,  38],
- [ 95, 287],
- [538, 244]]
+                [[ 77,  88],
+ [484,  79],
+ [ 56, 301],
+ [498, 251]]
         ).flatten()
 
         self.srv = self.create_service(
@@ -151,12 +151,17 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        # self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
-        # self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
+        self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
+        self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
 
-        # initial pose for IBVS testing
-        self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
-        self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
+        # initial pose for IBVS testing (heading right)
+        # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
+        # self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
+
+
+        # initial pose for IBVS testing (heading left)
+        # self.setpoint_position = np.array([1.72465777, -0.99081445,  0.])
+        # self.setpoint_attitude = np.array([8.75987232e-01, 0, 0, 4.82334286e-01])
 
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
@@ -195,7 +200,7 @@ class SpacecraftIBMPVS(Node):
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 45
+        self.ibvs_e_threshold = 55
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -305,7 +310,7 @@ class SpacecraftIBMPVS(Node):
 
         # check if all Z is non zero, otherwise, use previous values FOR THE ZEROS ELEMENT
         if np.any(self.Z == 0):
-            self.get_logger().warn("Some Z values are zero, using previous values")
+            # self.get_logger().warn("Some Z values are zero, using previous values")
             for i in range(len(self.Z)):
                 self.Z[i] = self.old_Z[i] if self.Z[i] == 0 else self.Z[i]
         else:

@@ -17,7 +17,7 @@ from rclpy.duration import Duration
 from px4_mpvs.marker_detector_blob import CircleFeatureDetector
 import struct
 
-# import matplotlib
+import matplotlib
 
 # matplotlib.use("Agg")  # Use TkAgg backend for matplotlib
 
@@ -30,7 +30,7 @@ class MarkerDetectorNode(Node):
         super().__init__("marker_detector_node")
         self.bridge = CvBridge()
 
-        self.save_image = False
+        self.save_image = True
         # Get parameters
 
         self.debug = self.declare_parameter("debug", True).value
@@ -79,7 +79,7 @@ class MarkerDetectorNode(Node):
         self.marker_pos = None
         self.mode = "PBVS"
         self.mode_color = (255, 0, 0)  # Green for PBVS
-        self.update_rate = 10  # Hz
+        self.update_rate = 30  # Hz
 
         # set a timer for the image processing
         self.create_timer(1.0 / self.update_rate, self.process_image)
@@ -88,20 +88,17 @@ class MarkerDetectorNode(Node):
         # self.get_logger().info(f'Initializing marker detector with reference image: {reference_image_}')
         # self.detector = CircleMarkerDetector(reference_image_, expected_markers=4, debug=self.debug, vis_debug=self.debug )
         self.detector = CircleFeatureDetector(
-            min_circle_radius=20,
-            max_circle_radius=1200,
-            circularity_threshold=0.8,
-            match_threshold=5.0,
+    
             visualize=self.visualize,
             debug=self.debug,
         )
 
         # Define target points for the markers
         self.target_points = np.array(
-            [[114,  71],
- [581,  38],
- [ 95, 287],
- [538, 244]],
+            [[ 77,  88],
+ [484,  79],
+ [ 56, 301],
+ [498, 251]],
             dtype=np.int16,
         )
 
@@ -138,9 +135,10 @@ class MarkerDetectorNode(Node):
             # Detect circles
             time_start = perf_counter()
             markers, viz_img = self.detector.detect(self.image)
+            
 
             if markers is not None and len(markers) == 4:
-                # self.get_logger().info(f"Detected {len(markers)} markers")
+                self.get_logger().info(f"Detected {len(markers)} markers")
 
                 # Get depth values for each marker if depth image is available
                 if self.depth_image is not None:
@@ -190,7 +188,6 @@ class MarkerDetectorNode(Node):
                         2,
                     )
 
-                    cv2.imshow("Detected Markers", viz_img)
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord("p"):
                         self.detector.print_current_hsv_values()
@@ -199,6 +196,9 @@ class MarkerDetectorNode(Node):
                     elif key == ord("l"):
                         self.detector.load_hsv_config()
 
+                
+                cv2.imshow("Detected Markers", viz_img)
+
                 # append the Z values to the markers
                 markers = np.hstack((markers, Z.reshape(-1, 1)))
 
@@ -206,11 +206,13 @@ class MarkerDetectorNode(Node):
                 markers_msg = Float32MultiArray()
                 markers_msg.data = markers.astype(np.float32).flatten().tolist()
 
-                self.markers_pub.publish(markers_msg)
-
                 self.get_logger().info(
                     f"Detection update rate: {1 / (perf_counter() - time_start):.2f} Hz"
                 )
+
+                self.markers_pub.publish(markers_msg)
+
+                
             else:
                 # display the raw image if no markers are detected
 

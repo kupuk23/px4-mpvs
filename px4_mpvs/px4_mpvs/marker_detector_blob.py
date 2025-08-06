@@ -21,10 +21,10 @@ class CircleFeatureDetector:
 
     def __init__(
         self,
-        min_circle_radius=20,
-        max_circle_radius=50,
-        circularity_threshold=0.99,
-        match_threshold=10.0,
+        min_circle_radius=35,
+        max_circle_radius=1200,
+        circularity_threshold=0.8,
+        match_threshold=0.9,
         visualize=False,
         debug=False,
         window_name="Circle Detection",
@@ -60,7 +60,7 @@ class CircleFeatureDetector:
         self.params.minConvexity = 0.9
 
         self.params.filterByInertia = True
-        self.params.minInertiaRatio = 0.7
+        self.params.minInertiaRatio = 0.65
 
         self.params.minDistBetweenBlobs = 10
 
@@ -266,7 +266,7 @@ class CircleFeatureDetector:
         # Show intermediate processing steps for debugging
         if self.visualize:
             cv2.imshow("Keypoints", img_with_keypoints)
-            cv2.imshow("Masked Image", mask)
+            # cv2.imshow("Masked Image", mask)
             # cv2.imshow("HSV Image", hsv)
             
             # Add HSV values to the keypoints image
@@ -315,8 +315,9 @@ class CircleFeatureDetector:
             return None, img
 
         # If more than 4 circles, match with target points
-        self.matched_centers = self._match_circles(circle_centers, self.target_points)
+        # self.matched_centers = self._match_circles(circle_centers, self.target_points)
         if self.matched_centers is not None:
+            
             ordered_centers = self._order_circles(self.matched_centers)
         else:
             # If matching failed, use default ordering with all detected circles
@@ -426,11 +427,14 @@ class CircleFeatureDetector:
 
                     # Transform points
                     transformed = cv2.perspectiveTransform(
-                        ordered_src.reshape(-1, 1, 2), H
+                        detected_points.reshape(-1, 1, 2), H
                     ).reshape(-1, 2)
 
-                    # Calculate error
-                    error = np.mean(np.linalg.norm(transformed - target_points, axis=1))
+                    dist_mat  = np.linalg.norm(
+                        transformed[:, None, :] - target_points[None, :, :], axis=2
+                    )
+                    min_dists = dist_mat.min(axis=1)     # (N,) nearest-neighbour dists
+                    error     = np.mean(min_dists)       # mean reprojection error
 
                     if error < best_error:
                         best_error = error
@@ -438,9 +442,12 @@ class CircleFeatureDetector:
                 except:
                     continue
 
+            
+
         # Only return if error is below threshold
         if best_error > self.match_threshold:
             return None
+
 
         return best_points
 

@@ -50,10 +50,10 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 7e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 3e3  # Quaternion scalar part, 8e3
-        self.w_features = 45e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.Qp_p = 9e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_q = 5e2  # Quaternion scalar part, 8e3
 
+        self.w_features = 45e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         self.x0 = (
             x0
             if x0 is not None
@@ -243,7 +243,7 @@ class SpacecraftVSMPC:
         # set weights for the cost function
         Q = [
             *[Qp_p] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-            *[2e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
+            *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
             # Qp_q,
             Qp_q,
             *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 40 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -279,8 +279,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(30 - (29 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(60 - (59 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(100 - (99 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -551,7 +551,7 @@ class SpacecraftVSMPC:
         vx, vy, vz = v_pred[0], v_pred[1], v_pred[2]
         w_x, w_y, w_z = w_pred[0], w_pred[1], w_pred[2]
         current_wz = x0[12][0]  # current angular velocity z component
-        print(f"Predicted twist: vx = {vx:.4f}, vy = {vy:.4f}, w_z = {w_z:.4f}, current wz = {current_wz:.4f}")
+        print(f"Predicted v_x = {vx:.4f}, Predicted twist: w_z = {w_z:.4f}")
 
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot

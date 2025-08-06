@@ -95,7 +95,7 @@ class VisualServo(Node):
         self.success_duration_required = 4.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
-        self.x_offset = 0.7
+        self.x_offset = 0.6
         self.latest_time = self.get_clock().now()
         self.pose_obtained = False
 
@@ -148,7 +148,7 @@ class VisualServo(Node):
         # self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds
         self.timer = self.create_timer(timer_period, self.aligning_callback)
-        self.stop_aligning(aligned=True)
+        # self.stop_aligning(aligned=True)
 
     def aligning_callback(self):
         current_time = self.get_clock().now()
@@ -306,7 +306,7 @@ class VisualServo(Node):
         self.docking_enabled = request.data
         response.success = True
         if self.docking_enabled:
-            # self.enable_goicp(True)  # Enable GOICP
+            self.enable_goicp(True)  # Enable GOICP
             # DEBUG
 
             response.message = "Docking mode enabled"
