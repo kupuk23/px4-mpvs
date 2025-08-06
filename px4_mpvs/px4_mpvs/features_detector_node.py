@@ -222,7 +222,7 @@ class MarkerDetectorNode(Node):
                     (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
-                    (0, 0, 0),
+                    self.mode_color,
                     2,
                 )
                 cv2.imshow("Detected Markers", self.image)
@@ -243,11 +243,11 @@ class MarkerDetectorNode(Node):
         if msg.data == 0:
             # self.get_logger().info("MPC running point tracking mode (PBVS)")
             self.mode = "PBVS"
-            self.mode_color = (0, 0, 0)  # Blue for PBVS
+            self.mode_color = (255, 255, 255)  # Blue for PBVS
         elif msg.data == 1:
             # self.get_logger().info("MPC running Hybrid mode")
             self.mode = "Hybrid"
-            self.mode_color = (0, 0, 0)  # Green for Hybrid
+            self.mode_color = (0, 255, 0)  # Green for Hybrid
         elif msg.data == 2:
             # self.get_logger().info("MPC running IBVS mode")
             self.mode = "IBVS"

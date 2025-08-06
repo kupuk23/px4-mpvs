@@ -51,9 +51,9 @@ class SpacecraftVSMPC:
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
         self.Qp_p = 9e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 5e2  # Quaternion scalar part, 8e3
+        self.Qp_q = 8e3  # Quaternion scalar part, 8e3
 
-        self.w_features = 45e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.w_features = 50e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         self.x0 = (
             x0
             if x0 is not None
@@ -376,24 +376,27 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 20
+        # S = S * 20
 
         e_s = (x[13:] - x_ref[13:])**2
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
+
+
+        
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 3  # how sharp the softmax is, 3.5 for softmax mode
+        k = 2.5  # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
         softmax_s = cs.exp(-k * Vs_dot)
 
         # cap softmax values to avoid numerical issues
-        softmax_p = cs.fmax(softmax_p, 1e3)
-        softmax_s = cs.fmax(softmax_s, 1e3)
+        softmax_p = cs.fmin(softmax_p, 1e3)
+        softmax_s = cs.fmin(softmax_s, 1e3)
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights
@@ -401,12 +404,12 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
-        w_p = cs.if_else(
-            Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
-        )  # ensure w_p is non-negative
-        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
-        w_s = 1.0 - w_p  # w_s is always non-negative
+        # Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
+        # w_p = cs.if_else(
+        #     Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
+        # )  # ensure w_p is non-negative
+        # # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
+        # w_s = 1.0 - w_p  # w_s is always non-negative
 
         V_dot = Vp_dot + Vs_dot
 
@@ -514,13 +517,13 @@ class SpacecraftVSMPC:
         if verbose:
             # self.debug_transformations(x0)
             if hybrid_mode and not self.ibvs_mode:
-                # print(f"===== Lyapunov Values =====")
-                # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-                # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-                # print(
-                #     f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-                # )
-                # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+                print(f"===== Lyapunov Values =====")
+                # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+                print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+                print(
+                    f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+                )
+                print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
                 pass
 
             # ocp_solver.dump_last_qp_to_json(filename="last_qp.json", overwrite=True)
@@ -551,7 +554,7 @@ class SpacecraftVSMPC:
         vx, vy, vz = v_pred[0], v_pred[1], v_pred[2]
         w_x, w_y, w_z = w_pred[0], w_pred[1], w_pred[2]
         current_wz = x0[12][0]  # current angular velocity z component
-        print(f"Predicted v_x = {vx:.4f}, Predicted twist: w_z = {w_z:.4f}")
+        # print(f"Predicted v_x = {vx:.4f}, Predicted twist: w_z = {w_z:.4f}")
 
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot

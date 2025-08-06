@@ -151,8 +151,9 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.09495187, -0.3227725, 0.0])
-        self.setpoint_attitude = np.array([7.11248338e-01,  0, 0,  7.02941000e-01])
+        self.setpoint_position = np.array([1.36987507, -0.46792305,  0.0])
+        self.setpoint_attitude = np.array([ 7.73634791e-01,  0,0,  6.33631825e-01]
+)
 
         # initial pose for IBVS testing (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
