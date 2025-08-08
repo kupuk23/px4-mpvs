@@ -75,7 +75,7 @@ from std_srvs.srv import SetBool
 
 from px4_mpvs.docking_state_machine import docking_state_machine
 
-from time import perf_counter
+from time import perf_counter, time
 
 
 class SpacecraftIBMPVS(Node):
@@ -83,22 +83,20 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = False  # Set to False after the first run to avoid rebuilding
+        self.build = True  # Set to False after the first run to avoid rebuilding
         self.sitl = False
-
-        self.aligning_threshold = 0.2
-
-        # self.camera_frame_id = self.declare_parameter(
-        #     "camera_frame_id", "camera_link"
-        # ).value
+        self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-                [[ 77,  88],
- [484,  79],
- [ 56, 301],
- [498, 251]]
+                [[ 82,  71],
+ [495,  71],
+ [ 65, 292],
+ [503, 237]]
         ).flatten()
+
+       
+        
 
         self.srv = self.create_service(
             SetBool, "/run_debug", self.aligned_callback_enabled
@@ -151,9 +149,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.36987507, -0.46792305,  0.0])
-        self.setpoint_attitude = np.array([ 7.73634791e-01,  0,0,  6.33631825e-01]
-)
+        self.setpoint_position = np.array([1.18265152, -0.45891452,  0.0])
+        self.setpoint_attitude = np.array([ 6.22645986e-01,  0,0,  7.39964306e-01])
 
         # initial pose for IBVS testing (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
@@ -164,6 +161,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_position = np.array([1.72465777, -0.99081445,  0.])
         # self.setpoint_attitude = np.array([8.75987232e-01, 0, 0, 4.82334286e-01])
 
+
+        self.new_setpoint_position = np.array([0.0, 0.0, 0.0])
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
@@ -200,7 +199,7 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
+        self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
         self.ibvs_e_threshold = 55
         
         self.tf_buffer = Buffer()
@@ -213,6 +212,7 @@ class SpacecraftIBMPVS(Node):
         response.success = True
         if request.data:
             response.message = "Docking mode enabled"
+            self.start_recording = True
             self.hybrid_start_time = perf_counter()
             self.aligned = True
             self.aligning = False
@@ -478,20 +478,21 @@ class SpacecraftIBMPVS(Node):
             self.get_logger().info("Robot is aligned, stopping homing mode")
             # update setpoint to be somewhere between the robot and object
 
+
             self.get_logger().info(
             f"OLD Setpoint position: {self.setpoint_position}"
         )
 
-            self.setpoint_position = np.array(
+            self.new_setpoint_position = np.array(
                 [
                     (self.vehicle_local_position[0] + self.p_obj[0]) / 2,
                     (self.vehicle_local_position[1] + self.p_obj[1]) / 2,
                     (self.vehicle_local_position[2] + self.p_obj[2]) / 2,
                 ]
             )
-        self.get_logger().info(
-            f"NEW Setpoint position: {self.setpoint_position}, Attitude: {self.setpoint_attitude}"
-        )
+            self.get_logger().info(
+                f"NEW Setpoint position: {self.new_setpoint_position}, Attitude: {self.setpoint_attitude}"
+            )
 
         # self.mpc.update_constraints(self.aligning)
 

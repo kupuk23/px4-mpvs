@@ -151,7 +151,7 @@ class SpacecraftVSModel:
         twist_optical = cs.mtimes(Ad_T_om, twist_map)
 
         #amplify angular velocity to be more responsive
-        twist_optical[3:6] *= 100 # Amplify angular velocity
+        # twist_optical[3:6] *= 80 # Amplify angular velocity
 
 
         s_dot_vec = cs.mtimes(L, twist_optical)  # 8x1

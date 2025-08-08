@@ -12,7 +12,12 @@ import pandas as pd
 
 from px4_mpvs.utils.plot_utils import plot_features, plot_weights
 
-desired_points = np.array([[82, 123], [563, 123], [176, 337], [505, 218]]).flatten()
+desired_points = np.array(
+                [[ 77,  88],
+ [484,  79],
+ [ 56, 301],
+ [498, 251]]
+        ).flatten()
 
 
 def load_pickle(path: Path):
@@ -87,7 +92,7 @@ def main(results_dir):
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/ratio"
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete"
 
     )
     main(results_dir)

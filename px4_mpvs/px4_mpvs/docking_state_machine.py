@@ -17,6 +17,9 @@ import datetime
 
 def docking_state_machine(node):
 
+    if node.new_setpoint_position.any():
+        node.setpoint_position = node.new_setpoint_position
+
     # Publish odometry for SITL
     if node.sitl:
         node.publish_sitl_odometry()
@@ -90,7 +93,7 @@ def docking_state_machine(node):
         ) 
 
         node.mode= 2 if w_s == 1.0 else node.mode
-            
+        
 
         # debug reference and current image state
         feature_current = x0[13:21].flatten()  # Current features
@@ -136,19 +139,22 @@ def docking_state_machine(node):
     
     # node.get_logger().info(f"MPC update freq = {(1 / (perf_counter() - t_start)):.2f} Hz")
 
+    import pytz
+    tz = pytz.timezone("Europe/Stockholm")  # Set your desired timezone
+    datetime.datetime.now(tz)  # Get the current time in the specified timezone
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.pre_dock_timer > 0.3:
+        if current_time - node.pre_dock_timer > 1:
             docking_duration = current_time - node.hybrid_start_time
             node.statistics["hybrid_duration"] = docking_duration
             node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
             node.docked = True
             print("Docking completed in {:.2f} seconds".format(docking_duration))
             # save the statistics into pickle
-            date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            os.makedirs(f"/home/tafarrel_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}", exist_ok=True)
-            pickle_filename = f"/home/tafarrel_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
+            date = datetime.datetime.now(tz).strftime("%m-%d_%H:%M:%S")
+            os.makedirs(f"{node.save_dir}/{node.hybrid_mode}", exist_ok=True)
+            pickle_filename = f"{node.save_dir}/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             

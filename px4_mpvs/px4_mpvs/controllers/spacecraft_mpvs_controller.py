@@ -50,7 +50,7 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 9e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 8e3  # Quaternion scalar part, 8e3
 
         self.w_features = 50e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 50 for element in S]
+        S_e = [element * 60 for element in S]
 
         R_mat = [1e1] * 4
 
@@ -279,8 +279,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(100 - (99 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(40 - (39 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(70 - (69 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -376,9 +376,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        # S = S * 20
+        S = S * 25e-1
 
-        e_s = (x[13:] - x_ref[13:])**2
+        e_s = x[13:] - x_ref[13:]
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
@@ -388,15 +388,15 @@ class SpacecraftVSMPC:
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 2.5  # how sharp the softmax is, 3.5 for softmax mode
+        k = 1.2  # how sharp the softmax is, 3.5 for softmax mode
 
         softmax_p = cs.exp(-k * Vp_dot)
         softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
         softmax_s = cs.exp(-k * Vs_dot)
 
         # cap softmax values to avoid numerical issues
-        softmax_p = cs.fmin(softmax_p, 1e3)
-        softmax_s = cs.fmin(softmax_s, 1e3)
+        softmax_p = cs.fmin(softmax_p, 1e2)
+        softmax_s = cs.fmin(softmax_s, 1e2)
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights

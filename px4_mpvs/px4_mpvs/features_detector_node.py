@@ -30,7 +30,7 @@ class MarkerDetectorNode(Node):
         super().__init__("marker_detector_node")
         self.bridge = CvBridge()
 
-        self.save_image = True
+        self.save_image = False
         # Get parameters
 
         self.debug = self.declare_parameter("debug", True).value
