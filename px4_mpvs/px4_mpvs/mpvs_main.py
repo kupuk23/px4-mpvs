@@ -83,17 +83,17 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
-        self.build = True  # Set to False after the first run to avoid rebuilding
+        self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = False
         self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
                 [[ 82,  71],
- [495,  71],
- [ 65, 292],
- [503, 237]]
-        ).flatten()
+                [495,  71],
+                [ 65, 292],
+                [503, 237]]
+                        ).flatten()
 
        
         
@@ -149,8 +149,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.18265152, -0.45891452,  0.0])
-        self.setpoint_attitude = np.array([ 6.22645986e-01,  0,0,  7.39964306e-01])
+        self.setpoint_position = np.array([1.80162287, -0.44803882,  0.0])
+        self.setpoint_attitude = np.array([ 7.33110845e-01, 0.0 ,0.0, 6.84133024e-01])
 
         # initial pose for IBVS testing (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
@@ -184,10 +184,10 @@ class SpacecraftIBMPVS(Node):
         # TIMER RELATED #
         self.start_recording = False  # flag to start recording the statistics
         self.pre_dock_timer = perf_counter()  # Timer for docking
-        self.start_full_docking_time = perf_counter()  # Timer for docking start
+        self.start_docking_time = perf_counter()  # Timer for docking start
         self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 2  # time to stabilize the robot before docking (seconds)
+        self.pre_docked_time_threshold = 2 # time to stabilize the robot before docking (seconds)
        
 
         self.aligning = False
@@ -200,7 +200,7 @@ class SpacecraftIBMPVS(Node):
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
         self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 55
+        self.ibvs_e_threshold = 60
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)

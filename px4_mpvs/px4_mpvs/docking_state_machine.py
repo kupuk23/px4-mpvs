@@ -145,12 +145,12 @@ def docking_state_machine(node):
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.pre_dock_timer > 1:
-            docking_duration = current_time - node.hybrid_start_time
-            node.statistics["hybrid_duration"] = docking_duration
-            node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
+        if current_time - node.pre_dock_timer > 0.1:
+            hybrid_duration = current_time - node.hybrid_start_time
+            node.statistics["hybrid_duration"] = hybrid_duration
+            node.statistics["full_docking_duration"] = current_time - node.start_docking_time
             node.docked = True
-            print("Docking completed in {:.2f} seconds".format(docking_duration))
+            print("Docking completed in {:.2f} seconds".format(hybrid_duration))
             # save the statistics into pickle
             date = datetime.datetime.now(tz).strftime("%m-%d_%H:%M:%S")
             os.makedirs(f"{node.save_dir}/{node.hybrid_mode}", exist_ok=True)

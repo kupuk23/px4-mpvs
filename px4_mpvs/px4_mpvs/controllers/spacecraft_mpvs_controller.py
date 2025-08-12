@@ -51,7 +51,7 @@ class SpacecraftVSMPC:
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
         self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 8e3  # Quaternion scalar part, 8e3
+        self.Qp_q = 1e4  # Quaternion scalar part, 8e3
 
         self.w_features = 50e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         self.x0 = (
@@ -256,7 +256,7 @@ class SpacecraftVSMPC:
         Q_e = [element * 30 for element in Q]
         S_e = [element * 60 for element in S]
 
-        R_mat = [1e1] * 4
+        R_mat = [4e1] * 4
 
         ocp.cost.W_0 = np.diag(Q + S + R_mat)
         ocp.cost.W = np.diag(Q + S + R_mat)
@@ -364,11 +364,7 @@ class SpacecraftVSMPC:
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
-
-        w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
-
-        Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
+        e_p = x[0:3] - x_ref[0:3] # Position error
 
         S = np.diag(
             [
@@ -376,7 +372,13 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 25e-1
+        S = S * 20
+
+        Qp_p = Qp_p * 6
+
+        w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
+
+        Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
 
         e_s = x[13:] - x_ref[13:]
 
@@ -384,19 +386,28 @@ class SpacecraftVSMPC:
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
 
 
+        Vp_dot = float(Vp_dot.full().flatten())
+        Vs_dot = float(Vs_dot.full().flatten())
+
         
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 1.2  # how sharp the softmax is, 3.5 for softmax mode
+        k = 2.5  # how sharp the softmax is, 3.5 for softmax mode
 
-        softmax_p = cs.exp(-k * Vp_dot)
-        softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
-        softmax_s = cs.exp(-k * Vs_dot)
+        softmax_p = np.exp(-k * Vp_dot)
+        if Vs_dot > 0.0:
+            Vs_dot *= 0.1
+        if Vs_dot < 0.0 and Vp_dot >0.0:
+            if np.absolute(Vs_dot) - np.absolute(Vp_dot) > 0.1: 
+                softmax_p = 0.0            
+        
+        # softmax_p = cs.if_else(Vp_dot > 0.05, 0, softmax_p)
+        softmax_s = np.exp(-k * Vs_dot)
 
         # cap softmax values to avoid numerical issues
-        softmax_p = cs.fmin(softmax_p, 1e2)
-        softmax_s = cs.fmin(softmax_s, 1e2)
+        softmax_p = min(softmax_p, 1e2)
+        softmax_s = min(softmax_s, 1e2)
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights
@@ -414,10 +425,8 @@ class SpacecraftVSMPC:
         V_dot = Vp_dot + Vs_dot
 
         # convert to numpy arrays
-        w_s = w_s.full().flatten()
-        w_p = w_p.full().flatten()
-        Vp_dot = Vp_dot.full().flatten()
-        Vs_dot = Vs_dot.full().flatten()
+        # w_s = w_s.full().flatten()
+        # w_p = w_p.full().flatten()
 
         # self.lyapunov_eval = cs.Function(
         #     "lyapunov_eval",
@@ -474,19 +483,19 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            w_p = np.zeros(1)
-            w_s = np.ones(1)
+            # w_p = np.zeros(1)
+            # w_s = np.ones(1)
 
             if w_p < 0.05:
                 self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:
-            w_p = np.zeros(1)
-            w_s = np.ones(1)
+            w_p = 0.0
+            w_s = 1.0
         else:
             self.ibvs_mode = False
             s_dot = np.zeros(8)
-            w_p = np.ones(1)  # Set to 1 for no hybrid mode
-            w_s = np.zeros(1)
+            w_p = 1.0  # Set to 1 for no hybrid mode
+            w_s = 0.0
 
         for i in range(self.N + 1):
             if i != self.N and i != 0:
@@ -496,10 +505,10 @@ class SpacecraftVSMPC:
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], p_obj, Z, w_p, w_s])
+                p_i = np.concatenate([ref[:, i], p_obj, Z, np.array([w_p]), np.array([w_s])])
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, p_obj, Z, w_p, w_s])
+                p_i = np.concatenate([zero_ref, p_obj, Z, np.array([w_p]), np.array([w_s])])
             ocp_solver.set(i, "p", p_i)
 
         # set initial state
@@ -508,11 +517,11 @@ class SpacecraftVSMPC:
 
         status = ocp_solver.solve()
 
-        # print(f"===== Lyapunov Values =====")
-        # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-        # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-        # print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
-        # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+        print(f"===== Lyapunov Values =====")
+        # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+        print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+        print(f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}")
+        print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
         if verbose:
             # self.debug_transformations(x0)

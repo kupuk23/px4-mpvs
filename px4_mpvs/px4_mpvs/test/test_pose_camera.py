@@ -84,8 +84,8 @@ class VisualServo(Node):
         self.obj_pose_history = []
         self.history_size = 5
         self.goal_pose = Pose()
-        self.position_threshold = 0.5
-        self.orientation_threshold = 20.0
+        self.position_threshold = 0.4
+        self.orientation_threshold = 15.0
         self.is_pose_consistent = False
         self.last_consistent_goal_pose = None  # Last consistent pose
         self.last_consistent_obj_pose = None  # Last consistent pose
@@ -95,7 +95,7 @@ class VisualServo(Node):
         self.success_duration_required = 4.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
-        self.x_offset = 0.6
+        self.x_offset = 0.7
         self.latest_time = self.get_clock().now()
         self.pose_obtained = False
 
@@ -139,11 +139,11 @@ class VisualServo(Node):
         )
 
         # Wait for service (add timeout for robustness)
-        if not self.param_client.wait_for_service(timeout_sec=5.0):
+        if not self.param_client.wait_for_service(timeout_sec=6.0):
             self.get_logger().warn(
                 "pose_estimation_pcl parameter service not available"
             )
-            return
+            # return
 
         # self.move_robot(self.init_pos, self.init_att)
         timer_period = 0.1  # seconds

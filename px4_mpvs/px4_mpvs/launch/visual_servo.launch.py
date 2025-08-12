@@ -83,20 +83,20 @@ def generate_launch_description():
         namespace_arg,
         setpoint_from_rviz_arg,
         use_sim_time_arg,
-        Node(
-            package='px4_mpvs',
-            namespace=namespace,
-            executable='mpvs_main', #mpvs_spacecraft
-            name='mpvs_main', #mpvs_spacecraft
-            output='screen',
-            emulate_tty=True,
-            parameters=[
-                {'mode': mode},
-                {'namespace': namespace},
-                {'setpoint_from_rviz': setpoint_from_rviz},
-                {'use_sim_time': LaunchConfiguration("use_sim_time")},
-            ]
-        ),
+        # Node(
+        #     package='px4_mpvs',
+        #     namespace=namespace,
+        #     executable='mpvs_main', #mpvs_spacecraft
+        #     name='mpvs_main', #mpvs_spacecraft
+        #     output='screen',
+        #     emulate_tty=True,
+        #     parameters=[
+        #         {'mode': mode},
+        #         {'namespace': namespace},
+        #         {'setpoint_from_rviz': setpoint_from_rviz},
+        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #     ]
+        # ),
         # Node(package='px4_mpvs',
         #     namespace=namespace,
         #     executable='features_detector_node',
@@ -129,13 +129,12 @@ def generate_launch_description():
         #     executable='test_pose_camera',
         #     name='test_pose_camera',
         #     output='screen',
-        #     emulate_tty=True,
         #     parameters=[
-        #         {'namespace': namespace},
-        #         {'use_sim_time': LaunchConfiguration("use_sim_time")},
+        #         {'namespace': namespace}
+                
         #     ],
-        #     condition=IfCondition(LaunchConfiguration('setpoint_from_rviz'))
         # ),
+        
         Node(
             package='px4_mpvs',
             namespace=namespace,
