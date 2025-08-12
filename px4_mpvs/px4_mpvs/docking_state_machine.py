@@ -88,8 +88,10 @@ def docking_state_machine(node):
         )
 
     elif node.aligned and not node.pre_docked:
+        if (perf_counter() - node.hybrid_start_time) > 0.5:
+            node.soft_start = False
         u_pred, x_pred,w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
-            x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
+            x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0, soft_start = node.soft_start
         ) 
 
         node.mode= 2 if w_s == 1.0 else node.mode

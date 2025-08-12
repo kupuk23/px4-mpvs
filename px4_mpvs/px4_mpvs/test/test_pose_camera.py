@@ -84,8 +84,8 @@ class VisualServo(Node):
         self.obj_pose_history = []
         self.history_size = 5
         self.goal_pose = Pose()
-        self.position_threshold = 0.4
-        self.orientation_threshold = 15.0
+        self.position_threshold = 0.35
+        self.orientation_threshold = 12.0
         self.is_pose_consistent = False
         self.last_consistent_goal_pose = None  # Last consistent pose
         self.last_consistent_obj_pose = None  # Last consistent pose

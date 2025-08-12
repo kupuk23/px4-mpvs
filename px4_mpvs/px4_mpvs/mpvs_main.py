@@ -95,6 +95,11 @@ class SpacecraftIBMPVS(Node):
                 [503, 237]]
                         ).flatten()
 
+#         self.desired_points = np.array([[ 94,  78],
+#  [488,  76],
+#  [ 80, 290],
+#  [498, 235]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
+
        
         
 
@@ -149,15 +154,15 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.80162287, -0.44803882,  0.0])
-        self.setpoint_attitude = np.array([ 7.33110845e-01, 0.0 ,0.0, 6.84133024e-01])
+        self.setpoint_position = np.array([1.1, -0.5,  0.0])
+        self.setpoint_attitude = np.array([ 6.13110845e-01, 0.0 ,0.0, 7.95133024e-01])
 
-        # initial pose for IBVS testing (heading right)
+        # initial pose for docking 2 (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
         # self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
 
 
-        # initial pose for IBVS testing (heading left)
+        # initial pose for docking 3 (heading left)
         # self.setpoint_position = np.array([1.72465777, -0.99081445,  0.])
         # self.setpoint_attitude = np.array([8.75987232e-01, 0, 0, 4.82334286e-01])
 
@@ -199,8 +204,9 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 60
+        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
+        self.soft_start = True
+        self.ibvs_e_threshold = 65
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)

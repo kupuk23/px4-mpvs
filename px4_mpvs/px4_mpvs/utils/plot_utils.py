@@ -32,7 +32,7 @@ def plot_weights(w_p, w_s, duration=None, lyapunov=False):
     ax.set_ylabel("Weight Value" if not lyapunov else "Lyapunov Derivative Value")
     ax.legend()
     plt.title("Weights Over Time" if not lyapunov else "Lyapunov derivative Over Time")
-    plt.show()
+    # plt.show()
 
 
 def plot_features(features, desired):

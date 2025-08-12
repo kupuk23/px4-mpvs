@@ -53,7 +53,7 @@ class SpacecraftVSMPC:
         self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 1e4  # Quaternion scalar part, 8e3
 
-        self.w_features = 50e-4  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.w_features = 45e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
         self.x0 = (
             x0
             if x0 is not None
@@ -279,7 +279,7 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(40 - (39 * w_p))  # Scale for velocity error
+        v_scale = cs.sqrt(30 - (29 * w_p))  # Scale for velocity error
         w_scale = cs.sqrt(70 - (69 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
@@ -359,7 +359,7 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
-    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot):
+    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot,soft_start):
         x = x.reshape(-1, 1)  # Ensure x is a column vector
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
@@ -372,9 +372,9 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 20
+        S = S * 10
 
-        Qp_p = Qp_p * 6
+        Qp_p = Qp_p * 15
 
         w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
 
@@ -389,11 +389,17 @@ class SpacecraftVSMPC:
         Vp_dot = float(Vp_dot.full().flatten())
         Vs_dot = float(Vs_dot.full().flatten())
 
+        if soft_start:
+            Vp_dot = -0.4
+            Vs_dot = -0.2
+
         
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 2.5  # how sharp the softmax is, 3.5 for softmax mode
+        k = 3.5  # how sharp the softmax is, 3.5 for softmax mode
+
+        Vs_dot = np.clip(Vs_dot, -2.0, 2.0)  # Clip to avoid numerical issues
 
         softmax_p = np.exp(-k * Vp_dot)
         if Vs_dot > 0.0:
@@ -415,14 +421,13 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        # Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
-        # w_p = cs.if_else(
-        #     Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
-        # )  # ensure w_p is non-negative
-        # # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
+        # Vs_dot = 0 if Vs_dot >= 0 else Vs_dot 
+        # w_p = 0 if Vp_dot > 0 else Vp_dot / (Vp_dot + Vs_dot + eps)
+
+        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
         # w_s = 1.0 - w_p  # w_s is always non-negative
 
-        V_dot = Vp_dot + Vs_dot
+        # V_dot = Vp_dot + Vs_dot
 
         # convert to numpy arrays
         # w_s = w_s.full().flatten()
@@ -443,7 +448,7 @@ class SpacecraftVSMPC:
             2e3 if servoing_enabled else 0
         )  # 2e3, TODO: set to 0 for no slack
 
-    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False, soft_start=False):
 
         # Set reference, create zero reference
         if ref is None:
@@ -470,6 +475,7 @@ class SpacecraftVSMPC:
         s_dot = self.model.feat_dyn_f(L_val, x0[0:3], x0[3:6], x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
 
+
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
             self.define_lyapunov_weight(
                 ocp_solver.get(0, "x"),
@@ -478,13 +484,14 @@ class SpacecraftVSMPC:
                 self.Qp_q,
                 self.w_features,
                 s_dot,
+                soft_start
             )
         )
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = np.zeros(1)
-            # w_s = np.ones(1)
+            # w_p = 0.0
+            # w_s = 1.0
 
             if w_p < 0.05:
                 self.ibvs_mode = True
