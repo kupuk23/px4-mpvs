@@ -359,7 +359,7 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
-    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot,soft_start):
+    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot,soft_start, Z=None):
         x = x.reshape(-1, 1)  # Ensure x is a column vector
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
@@ -389,26 +389,31 @@ class SpacecraftVSMPC:
         Vp_dot = float(Vp_dot.full().flatten())
         Vs_dot = float(Vs_dot.full().flatten())
 
+
         if soft_start:
             Vp_dot = -0.4
             Vs_dot = -0.2
+
+        if Z is not None:  # If Z is provided, average the depth to scale Vs_dot
+            Z_avg = np.average(Z)
+            if Z_avg > 0:
+                Vs_dot /= Z_avg
 
         
         # softmax_p = 0
         # softmax_s = 0
 
-        k = 3.5  # how sharp the softmax is, 3.5 for softmax mode
+        k = 3.0  # how sharp the softmax is, 3.5 for softmax mode
 
         Vs_dot = np.clip(Vs_dot, -2.0, 2.0)  # Clip to avoid numerical issues
 
         softmax_p = np.exp(-k * Vp_dot)
         if Vs_dot > 0.0:
             Vs_dot *= 0.1
-        if Vs_dot < 0.0 and Vp_dot >0.0:
+        if Vs_dot < 0.0 and Vp_dot > 0.0:
             if np.absolute(Vs_dot) - np.absolute(Vp_dot) > 0.1: 
                 softmax_p = 0.0            
         
-        # softmax_p = cs.if_else(Vp_dot > 0.05, 0, softmax_p)
         softmax_s = np.exp(-k * Vs_dot)
 
         # cap softmax values to avoid numerical issues
@@ -424,10 +429,10 @@ class SpacecraftVSMPC:
         # Vs_dot = 0 if Vs_dot >= 0 else Vs_dot 
         # w_p = 0 if Vp_dot > 0 else Vp_dot / (Vp_dot + Vs_dot + eps)
 
-        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
+        # w_p = max(w_p, 0)  # ensure w_p is non-negative
         # w_s = 1.0 - w_p  # w_s is always non-negative
 
-        # V_dot = Vp_dot + Vs_dot
+        V_dot = Vp_dot + Vs_dot
 
         # convert to numpy arrays
         # w_s = w_s.full().flatten()
@@ -484,7 +489,8 @@ class SpacecraftVSMPC:
                 self.Qp_q,
                 self.w_features,
                 s_dot,
-                soft_start
+                soft_start,
+                Z=Z,
             )
         )
 

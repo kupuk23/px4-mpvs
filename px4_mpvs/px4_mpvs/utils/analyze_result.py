@@ -95,14 +95,14 @@ def main(results_dir):
     print(summary_df)
     
     #print full docking duration, hybrid duration
-    print(f"Full docking duration : {dicts[min_duration_index]["full_docking_duration"]}")
-    print(f"Hybrid duration : {dicts[min_duration_index]["hybrid_duration"]}")
+    print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
+    print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
 
 
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/softmax/PERFECT_SOFTMAX_HW.pickle"
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/softmax/Softmax_4.pickle"
 
     )
     main(results_dir)

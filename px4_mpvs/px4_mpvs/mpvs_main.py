@@ -204,7 +204,7 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
+        self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
         self.soft_start = True
         self.ibvs_e_threshold = 65
         
