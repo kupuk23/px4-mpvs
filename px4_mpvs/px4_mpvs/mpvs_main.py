@@ -88,17 +88,17 @@ class SpacecraftIBMPVS(Node):
         self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"
 
         # flattened 2d coordinates of the desired points (4x2)
-        # self.desired_points = np.array( #old
-        #         [[ 82,  71],
-        #         [495,  71],
-        #         [ 65, 292],
-        #         [503, 237]]
-        #                 ).flatten()
+        self.desired_points = np.array( #old
+                [[ 82,  71],
+                [495,  71],
+                [ 65, 292],
+                [503, 237]]
+                        ).flatten()
 
-        self.desired_points = np.array([[107,  87],
- [492,  89],
- [ 86, 296],
- [503, 246]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
+#         self.desired_points = np.array([[107,  87],
+#  [492,  89],
+#  [ 86, 296],
+#  [503, 246]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
 
        
         

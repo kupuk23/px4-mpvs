@@ -484,8 +484,8 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = 0.0
-            # w_s = 1.0
+            w_p = 0.0
+            w_s = 1.0
 
             if w_p < 0.05:
                 self.ibvs_mode = True
