@@ -88,17 +88,17 @@ class SpacecraftIBMPVS(Node):
         self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"
 
         # flattened 2d coordinates of the desired points (4x2)
-        self.desired_points = np.array(
-                [[ 82,  71],
-                [495,  71],
-                [ 65, 292],
-                [503, 237]]
-                        ).flatten()
+        # self.desired_points = np.array( #old
+        #         [[ 82,  71],
+        #         [495,  71],
+        #         [ 65, 292],
+        #         [503, 237]]
+        #                 ).flatten()
 
-#         self.desired_points = np.array([[ 94,  78],
-#  [488,  76],
-#  [ 80, 290],
-#  [498, 235]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
+        self.desired_points = np.array([[107,  87],
+ [492,  89],
+ [ 86, 296],
+ [503, 246]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
 
        
         
@@ -142,7 +142,7 @@ class SpacecraftIBMPVS(Node):
 
         # self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
         # self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
-        self.vehicle_local_position = np.array([1.79763114, -0.95280247, 0.0])
+        self.vehicle_local_position = np.array([1.79763114, -0.99280247, 0.0])
         self.vehicle_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
@@ -156,6 +156,9 @@ class SpacecraftIBMPVS(Node):
         # setpoint for docking #
         self.setpoint_position = np.array([1.1, -0.5,  0.0])
         self.setpoint_attitude = np.array([ 6.13110845e-01, 0.0 ,0.0, 7.95133024e-01])
+
+        # self.setpoint_position = np.array([1.8987507, -0.906792305,  0.0])
+        # self.setpoint_attitude = np.array([ 7.1634791e-01,  0,0,  6.93631825e-01])
 
         # initial pose for docking 2 (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
@@ -204,9 +207,9 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "softmax" # "softmax" or "discrete" or "ratio"
+        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
         self.soft_start = True
-        self.ibvs_e_threshold = 65
+        self.ibvs_e_threshold = 45
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)

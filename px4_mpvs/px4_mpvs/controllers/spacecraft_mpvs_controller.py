@@ -400,10 +400,10 @@ class SpacecraftVSMPC:
                 Vs_dot /= Z_avg
 
         
-        # softmax_p = 0
-        # softmax_s = 0
+        softmax_p = 0
+        softmax_s = 0
 
-        k = 3.0  # how sharp the softmax is, 3.5 for softmax mode
+        k = 3.5  # how sharp the softmax is, 3.5 for softmax mode
 
         Vs_dot = np.clip(Vs_dot, -2.0, 2.0)  # Clip to avoid numerical issues
 
@@ -426,25 +426,13 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        # Vs_dot = 0 if Vs_dot >= 0 else Vs_dot 
-        # w_p = 0 if Vp_dot > 0 else Vp_dot / (Vp_dot + Vs_dot + eps)
+        # w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
+        # w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
+        # w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
 
-        # w_p = max(w_p, 0)  # ensure w_p is non-negative
-        # w_s = 1.0 - w_p  # w_s is always non-negative
 
         V_dot = Vp_dot + Vs_dot
 
-        # convert to numpy arrays
-        # w_s = w_s.full().flatten()
-        # w_p = w_p.full().flatten()
-
-        # self.lyapunov_eval = cs.Function(
-        #     "lyapunov_eval",
-        #     [x, x_ref, s_dot],
-        #     [Vp_dot, Vs_dot, V_dot, w_p, w_s, softmax_p, softmax_s],
-        #     ["state", "reference", "s_dot"],
-        #     ["Vp_dot", "Vs_dot", "V_dot", "w_p", "w_s", "softmax_p", "softmax_s"],
-        # )
         return w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s
 
     def update_constraints(self, servoing_enabled):

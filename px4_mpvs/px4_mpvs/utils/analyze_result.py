@@ -95,6 +95,8 @@ def main(results_dir):
     print(summary_df)
     
     #print full docking duration, hybrid duration
+    #show the name of the file with the shortest hybrid duration
+    print("\nThe best result is from file:", paths[min_duration_index].name)
     print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
     print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
 
@@ -102,7 +104,7 @@ def main(results_dir):
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/softmax/Softmax_4.pickle"
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete/"
 
     )
     main(results_dir)
