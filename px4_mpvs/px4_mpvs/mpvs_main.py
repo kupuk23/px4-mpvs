@@ -54,8 +54,6 @@ from tf2_ros import Buffer, TransformListener
 from px4_mpvs.utils.ros_utils import lookup_transform
 from tf2_geometry_msgs import do_transform_pose
 
-from std_srvs.srv import SetBool
-
 from px4_msgs.msg import OffboardControlMode
 from px4_msgs.msg import VehicleStatus
 from px4_msgs.msg import VehicleAttitude
@@ -73,21 +71,21 @@ from px4_mpvs.controllers.spacecraft_mpvs_controller import SpacecraftVSMPC
 
 from mpc_msgs.srv import SetPose
 from vs_msgs.srv import SetHomePose
+from std_srvs.srv import SetBool
 
 from px4_mpvs.docking_state_machine import docking_state_machine
 
-from time import perf_counter
+from time import perf_counter, time
 
 
 class SpacecraftIBMPVS(Node):
 
-    def __init__(self): 
+    def __init__(self):
         super().__init__("spacecraft_mpvs")
 
         self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = True
-
-        self.aligning_threshold = 0.2
+        self.save_dir  = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data"
 
         self.srv = self.create_service(
             SetBool, "run_debug", self.aligned_callback_enabled
@@ -101,6 +99,13 @@ class SpacecraftIBMPVS(Node):
         self.desired_points = np.array(
             [[82, 123], [563, 123], [176, 337], [505, 218]]
         ).flatten()
+
+        
+
+        self.srv = self.create_service(
+            SetBool, "/run_debug", self.aligned_callback_enabled
+        )
+        
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
@@ -134,20 +139,43 @@ class SpacecraftIBMPVS(Node):
 
         self.nav_state = VehicleStatus.NAVIGATION_STATE_MAX
 
-        self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
-        self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
+        # self.vehicle_attitude = np.array([1.0, 0.0, 0.0, 0])
+        # self.vehicle_local_position = np.array([0.0, 0.0, 0.0])
+        self.vehicle_local_position = np.array([1.79763114, -0.99280247, 0.0])
+        self.vehicle_attitude = np.array([0.73288746, 0.0, 0.0, 0.67939292])
         self.vehicle_angular_velocity = np.array([0.0, 0.0, 0.0])
         self.vehicle_local_velocity = np.array([0.0, 0.0, 0.0])
         # self.setpoint_position = np.array([0.0, 0.0, 0.0])
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        self.setpoint_position = np.array([1.63171983, -0.89508373, 0.0])  
+        # self.setpoint_position = np.array([2.0, 0.0, 0.0]) 
+        # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
+
+        # setpoint for docking #
+        self.setpoint_position = np.array([1.13171983, -0.39508373, 0.0])  
         self.setpoint_attitude = np.array([0.71056116, 0.0, 0.0, 0.70135128])  
+
+
+        # self.setpoint_position = np.array([1.8987507, -0.906792305,  0.0])
+        # self.setpoint_attitude = np.array([ 7.1634791e-01,  0,0,  6.93631825e-01])
+
+        # initial pose for docking 2 (heading right)
+        # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
+        # self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
+
+
+        # initial pose for docking 3 (heading left)
+        # self.setpoint_position = np.array([1.72465777, -0.99081445,  0.])
+        # self.setpoint_attitude = np.array([8.75987232e-01, 0, 0, 4.82334286e-01])
+
+
+        self.new_setpoint_position = np.array([0.0, 0.0, 0.0])
 
         self.p_obj = np.array([-100.0, 0.0, 0.0])  # object position in map
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
+        self.old_Z = np.array([1.0, 1.0, 1.0, 1.0])  # old Z coordinates of the markers
         self.statistics = {
             "recorded_features": [],
             "recorded_wp": [],
@@ -164,10 +192,10 @@ class SpacecraftIBMPVS(Node):
         # TIMER RELATED #
         self.start_recording = False  # flag to start recording the statistics
         self.pre_dock_timer = perf_counter()  # Timer for docking
-        self.start_full_docking_time = perf_counter()  # Timer for docking start
+        self.start_docking_time = perf_counter()  # Timer for docking start
         self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 2  # time to stabilize the robot before docking (seconds)
+        self.pre_docked_time_threshold = 2 # time to stabilize the robot before docking (seconds)
        
 
         self.aligning = False
@@ -179,11 +207,28 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
-        self.ibvs_e_threshold = 20
+        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
+        self.soft_start = True
+        self.ibvs_e_threshold = 45
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
+        # Create service for docking control
+        
+
+    def aligned_callback_enabled(self, request, response):
+        """Service callback to enable/disable pose forwarding"""
+        response.success = True
+        if request.data:
+            response.message = "Docking mode enabled"
+            self.start_recording = True
+            self.hybrid_start_time = perf_counter()
+            self.aligned = True
+            self.aligning = False
+            self.mode = 1
+            self.get_logger().info("Docking mode enabled")
+            
+        return response
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
@@ -273,6 +318,14 @@ class SpacecraftIBMPVS(Node):
         self.p_markers = points_3d[:, 0:2].astype(np.int16).flatten()
         self.Z = points_3d[:, 2].astype(np.float16)
 
+        # check if all Z is non zero, otherwise, use previous values FOR THE ZEROS ELEMENT
+        if np.any(self.Z == 0):
+            # self.get_logger().warn("Some Z values are zero, using previous values")
+            for i in range(len(self.Z)):
+                self.Z[i] = self.old_Z[i] if self.Z[i] == 0 else self.Z[i]
+        else:
+            self.old_Z = self.Z.copy()
+
         self.markers_detected = True
 
     def vehicle_attitude_callback(self, msg):
@@ -293,7 +346,6 @@ class SpacecraftIBMPVS(Node):
 
     def vehicle_angular_velocity_callback(self, msg):
         # NED-> ENU transformation
-        self.vehicle_angular_velocity_timestamp = Clock().now().nanoseconds / 1e9
         self.vehicle_angular_velocity[0] = msg.xyz[0]
         self.vehicle_angular_velocity[1] = -msg.xyz[1]
         self.vehicle_angular_velocity[2] = -msg.xyz[2]
@@ -419,19 +471,6 @@ class SpacecraftIBMPVS(Node):
         self.setpoint_attitude[2] = msg.pose.orientation.y
         self.setpoint_attitude[3] = msg.pose.orientation.z
 
-    def aligned_callback_enabled(self, request, response):
-        """Service callback to enable/disable pose forwarding"""
-        response.success = True
-        if request.data:
-            response.message = "Docking mode enabled"
-            self.hybrid_start_time = perf_counter()
-            self.aligned = True
-            self.aligning = False
-            self.mode = 1
-            self.get_logger().info("Docking mode enabled")
-            
-        return response
-
     def servo_srv_callback(self, request: SetHomePose, response: SetHomePose.Response):
         if request.align_mode:
             self.start_docking_time = perf_counter()
@@ -448,24 +487,22 @@ class SpacecraftIBMPVS(Node):
             self.get_logger().info("Robot is aligned, stopping homing mode")
             # update setpoint to be somewhere between the robot and object
 
+
             self.get_logger().info(
             f"OLD Setpoint position: {self.setpoint_position}"
         )
-            self.get_logger().info(
-                f"OLD Setpoint attitude: {self.setpoint_attitude}"
-            )
 
-            self.setpoint_position = np.array(
+            self.new_setpoint_position = np.array(
                 [
                     (self.vehicle_local_position[0] + self.p_obj[0]) / 2,
                     (self.vehicle_local_position[1] + self.p_obj[1]) / 2,
                     (self.vehicle_local_position[2] + self.p_obj[2]) / 2,
                 ]
             )
-        self.get_logger().info(
-            f"NEW Setpoint position: {self.setpoint_position}"
-        )
-        
+            self.get_logger().info(
+                f"NEW Setpoint position: {self.new_setpoint_position}, Attitude: {self.setpoint_attitude}"
+            )
+
         # self.mpc.update_constraints(self.aligning)
 
         self.p_obj = np.array([-100.0, 0, 0])

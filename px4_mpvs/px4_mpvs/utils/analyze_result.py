@@ -9,10 +9,10 @@ import pickle
 import numpy as np
 import sys
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from px4_mpvs.utils.plot_utils import plot_features, plot_weights
 
-desired_points = np.array([[82, 123], [563, 123], [176, 337], [505, 218]]).flatten()
 
 
 def load_pickle(path: Path):
@@ -52,11 +52,23 @@ def summarize(merged):
 
 
 def main(results_dir):
-    paths = sorted(Path(results_dir).glob("*.pickle"))
-    if not paths:
-        sys.exit(f"No .pkl files found in {results_dir}")
+    # check if results_dir is path or file, if a file, immediately load it
+    if not Path(results_dir).is_dir():
+        file_analysis = True
+        if Path(results_dir).suffix != ".pickle":
+            sys.exit(f"Expected a directory or a .pickle file, got {results_dir}")
+        # Load single pickle file
+        dicts = [load_pickle(Path(results_dir))]
+    else:
+        file_analysis = False
+        paths = sorted(Path(results_dir).glob("*.pickle"))
+        if not paths:
+            sys.exit(f"No .pkl files found in {results_dir}")
 
-    dicts = [load_pickle(p) for p in paths]
+        dicts = [load_pickle(p) for p in paths]
+        print(f"\nLoaded {len(paths)} files:")
+        for p in paths:
+            print(" •", p.name)
 
 
 
@@ -67,7 +79,7 @@ def main(results_dir):
     # choose statistic with shortest "hybrid_duration"
     hybrid_durations = np.array(merged["hybrid_duration"])
     min_duration_index = np.argmin(hybrid_durations)
-    plot_features(dicts[min_duration_index]["recorded_features"], desired_points)
+    plot_features(dicts[min_duration_index]["recorded_features"], dicts[min_duration_index]["desired_points"])
     plot_weights(dicts[min_duration_index]["recorded_wp"], dicts[min_duration_index]["recorded_ws"], dicts[min_duration_index]["full_docking_duration"])
 
     # plot lyapunovs
@@ -78,16 +90,24 @@ def main(results_dir):
         lyapunov=True,
     )
 
-    print(f"\nLoaded {len(paths)} files:")
-    for p in paths:
-        print(" •", p.name)
+    plt.show()
+
+    
     print("\nSummary statistics:")
     print(summary_df)
+    
+    #print full docking duration, hybrid duration
+    #show the name of the file with the shortest hybrid duration
+    if not file_analysis:
+        print("\nThe best result is from file:", paths[min_duration_index].name)
+    print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
+    print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
+
 
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/ratio"
+        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/"
 
     )
     main(results_dir)

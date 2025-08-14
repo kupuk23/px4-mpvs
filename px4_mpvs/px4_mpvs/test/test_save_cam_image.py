@@ -7,7 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "docked_image_v4"
+filename = "local_minima"
 
 
 class SaveImage(Node):

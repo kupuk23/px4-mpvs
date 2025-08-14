@@ -13,9 +13,13 @@ from time import perf_counter
 
 import pickle
 import datetime
+import os
 
 def docking_state_machine(node):
 
+    if node.new_setpoint_position.any():
+        node.setpoint_position = node.new_setpoint_position
+        
     # Publish odometry for SITL
     if node.sitl:
         node.publish_sitl_odometry()
@@ -83,6 +87,8 @@ def docking_state_machine(node):
         )
 
     elif node.aligned and not node.pre_docked:
+        if (perf_counter() - node.hybrid_start_time) > 1.5:
+            node.soft_start = False
         u_pred, x_pred,w_p,w_s, Vp_dot, Vs_dot = node.mpc.solve(
             x0, verbose=True, ref=ref, p_obj=node.p_obj, Z=node.Z, hybrid_mode=1.0
         ) 
@@ -119,7 +125,6 @@ def docking_state_machine(node):
         w_s = float(w_s)
         Vp_dot = float(Vp_dot)
         Vs_dot = float(Vs_dot)
-        # TODO: Add vs_dot and vp_dot to statistics
         node.statistics["recorded_wp"].append(w_p)
         node.statistics["recorded_ws"].append(w_s)
         node.statistics["Vp_dot"].append(Vp_dot)
@@ -131,18 +136,22 @@ def docking_state_machine(node):
     mpc_time = t_stop - t_start
     # node.get_logger().info(f"MPC update freq = {(1 / mpc_time):.2f} Hz")
 
+    import pytz
+    tz = pytz.timezone("Europe/Stockholm")  # Set your desired timezone
+    datetime.datetime.now(tz)  # Get the current time in the specified timezone
     if node.pre_docked and not node.docked:
         # run this for n seconds to ensure the spacecraft is docked
         current_time = perf_counter()
-        if current_time - node.pre_dock_timer > 3:
-            docking_duration = current_time - node.hybrid_start_time
-            node.statistics["hybrid_duration"] = docking_duration
-            node.statistics["full_docking_duration"] = current_time - node.start_full_docking_time
+        if current_time - node.pre_dock_timer > 0.1:
+            hybrid_duration = current_time - node.hybrid_start_time
+            node.statistics["hybrid_duration"] = hybrid_duration
+            node.statistics["full_docking_duration"] = current_time - node.start_docking_time
             node.docked = True
-            print("Docking completed in {:.2f} seconds".format(docking_duration))
+            print("Docking completed in {:.2f} seconds".format(hybrid_duration))
             # save the statistics into pickle
-            date = datetime.datetime.now().strftime("%m-%d_%H:%M:%S")
-            pickle_filename = f"/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
+            date = datetime.datetime.now(tz).strftime("%m-%d_%H:%M:%S")
+            os.makedirs(f"{node.save_dir}/{node.hybrid_mode}", exist_ok=True)
+            pickle_filename = f"{node.save_dir}/{node.hybrid_mode}/hybrid_statistics_{node.hybrid_mode}({date}).pickle"
             with open(pickle_filename, "wb") as f:
                 pickle.dump(node.statistics, f, protocol=pickle.HIGHEST_PROTOCOL)
             

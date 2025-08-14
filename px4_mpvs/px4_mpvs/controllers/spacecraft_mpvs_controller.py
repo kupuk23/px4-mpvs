@@ -50,10 +50,10 @@ class SpacecraftVSMPC:
         self.N = 24  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
-        self.Qp_p = 1e2  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        self.Qp_q = 3e3  # Quaternion scalar part, 8e3
-        self.w_features = 4e-3  # Image feature weights, 0 pbvs, 5e-3 for ibvs
+        self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
+        self.Qp_q = 1e4  # Quaternion scalar part, 8e3
 
+        self.w_features = 35e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
         self.x0 = (
             x0
             if x0 is not None
@@ -100,7 +100,7 @@ class SpacecraftVSMPC:
         )
         self.model.build_feature_dyn_fun()
         self.model.build_interaction_mat_fun()
-        self.model.build_debug_functions()
+        # self.model.build_debug_functions()
 
     def set_constraints(self, ocp, x0):
         Fmax = self.model.max_thrust
@@ -125,9 +125,9 @@ class SpacecraftVSMPC:
         ocp.cost.zu_e = np.array([self.w_slack])
 
         # set bounds for image features (x coordinates)
-        ocp.constraints.idxbx = np.array([13, 15, 17, 19])
-        ocp.constraints.lbx = np.array([self.s_min] * 4)
-        ocp.constraints.ubx = np.array([self.s_max] * 4)
+        # ocp.constraints.idxbx = np.array([13, 15, 17, 19])
+        # ocp.constraints.lbx = np.array([self.s_min] * 4)
+        # ocp.constraints.ubx = np.array([self.s_max] * 4)
 
         # set constraints
         ocp.constraints.lbu = np.array([-Fmax, -Fmax, -Fmax, -Fmax])
@@ -246,24 +246,17 @@ class SpacecraftVSMPC:
             *[1e2] * 3,  # Velocity weights (vx, vy, vz) # 5e1 pbvs, 5e3 for ibvs
             # Qp_q,
             Qp_q,
-            *[1e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
+            *[2e2] * 3,  # angular vel (ωx, ωy, ωz) # 5e1 pbvs, 8e2 for ibvs
         ]
-
-        # Qs = [
-        #         *[0] * 3,  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
-        #         *[50e2] * 3,  # Velocity weights (vx, vy, vz) # 70e2
-        #         0,
-        #         *[4e3] * 3,  # angular vel (ωx, ωy, ωz) #5e3
-        #     ]
 
         S = [
             *[w_features] * 8,  # Image feature weights, 0 pbvs, 5e-3 for ibvs
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 50 for element in S]
+        S_e = [element * 30 for element in S]
 
-        R_mat = [1e1] * 4
+        R_mat = [4e1] * 4
 
         ocp.cost.W_0 = np.diag(Q + S + R_mat)
         ocp.cost.W = np.diag(Q + S + R_mat)
@@ -286,8 +279,8 @@ class SpacecraftVSMPC:
         # q : wp
         # w : 10-(9wp)
         # s : 1-wp
-        v_scale = cs.sqrt(50 - (49 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(20 - (19 * w_p))  # Scale for angular velocity error
+        v_scale = cs.sqrt(35 - (34 * w_p))  # Scale for velocity error
+        w_scale = cs.sqrt(70 - (69 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -366,16 +359,12 @@ class SpacecraftVSMPC:
 
         return ocp_solver, acados_integrator
 
-    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot):
+    def define_lyapunov_weight(self, x: cs.MX, x_ref: cs.MX, Qp_p, Qp_q, w_feat, s_dot,soft_start, Z=None):
         x = x.reshape(-1, 1)  # Ensure x is a column vector
         x_ref = x_ref.reshape(-1, 1)  # Ensure x_ref is
         v = x[3:6]  # Velocity
 
-        e_p = (x[0:3] - x_ref[0:3])**2  # Position error
-
-        w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
-
-        Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
+        e_p = x[0:3] - x_ref[0:3] # Position error
 
         S = np.diag(
             [
@@ -383,20 +372,53 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 25
+        S = S * 10
 
-        e_s = (x[13:] - x_ref[13:])**2
+        Qp_p = Qp_p * 15
+
+        w_diag = cs.vertcat(cs.DM([Qp_p, Qp_p, Qp_p]))
+
+        Qp_V = cs.diag(w_diag)  # PBVS Qp matrix
+
+        e_s = x[13:] - x_ref[13:]
 
         Vp_dot = cs.mtimes([e_p.T, Qp_V, v])
         Vs_dot = cs.mtimes([e_s.T, S, s_dot])
-        # softmax_p = 0
-        # softmax_s = 0
 
-        k = 3  # how sharp the softmax is, 3.5 for softmax mode
 
-        softmax_p = cs.exp(-k * Vp_dot)
-        softmax_p = cs.if_else(Vp_dot > 0.02, 0, softmax_p)
-        softmax_s = cs.exp(-k * Vs_dot)
+        Vp_dot = float(Vp_dot.full().flatten())
+        Vs_dot = float(Vs_dot.full().flatten())
+
+
+        if soft_start:
+            Vp_dot = -0.4
+            Vs_dot = -0.2
+
+        if Z is not None:  # If Z is provided, average the depth to scale Vs_dot
+            Z_avg = np.average(Z)
+            if Z_avg > 0:
+                Vs_dot /= Z_avg
+
+        
+        softmax_p = 0
+        softmax_s = 0
+
+        k = 3.5  # how sharp the softmax is, 3.5 for softmax mode
+
+        Vs_dot = np.clip(Vs_dot, -2.0, 2.0)  # Clip to avoid numerical issues
+
+        softmax_p = np.exp(-k * Vp_dot)
+        if Vs_dot > 0.0:
+            Vs_dot *= 0.1
+        if Vs_dot < 0.0 and Vp_dot > 0.0:
+            if np.absolute(Vs_dot) - np.absolute(Vp_dot) > 0.1: 
+                softmax_p = 0.0            
+        
+        softmax_s = np.exp(-k * Vs_dot)
+
+        # cap softmax values to avoid numerical issues
+        softmax_p = min(softmax_p, 1e2)
+        softmax_s = min(softmax_s, 1e2)
         eps = 1e-5  # keeps denominator strictly positive
 
         # # softmax weights
@@ -404,28 +426,13 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        Vs_dot = cs.if_else(Vs_dot >= 0, 0, Vs_dot)
-        w_p = cs.if_else(
-            Vp_dot > 0, 0, Vp_dot / (Vp_dot + Vs_dot + eps)
-        )  # ensure w_p is non-negative
-        # w_p = cs.fmax(w_p, 0)  # ensure w_p is non-negative
-        w_s = 1.0 - w_p  # w_s is always non-negative
+        w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
+        w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
+        w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
+
 
         V_dot = Vp_dot + Vs_dot
 
-        # convert to numpy arrays
-        w_s = w_s.full().flatten()
-        w_p = w_p.full().flatten()
-        Vp_dot = Vp_dot.full().flatten()
-        Vs_dot = Vs_dot.full().flatten()
-
-        # self.lyapunov_eval = cs.Function(
-        #     "lyapunov_eval",
-        #     [x, x_ref, s_dot],
-        #     [Vp_dot, Vs_dot, V_dot, w_p, w_s, softmax_p, softmax_s],
-        #     ["state", "reference", "s_dot"],
-        #     ["Vp_dot", "Vs_dot", "V_dot", "w_p", "w_s", "softmax_p", "softmax_s"],
-        # )
         return w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s
 
     def update_constraints(self, servoing_enabled):
@@ -434,54 +441,7 @@ class SpacecraftVSMPC:
             2e3 if servoing_enabled else 0
         )  # 2e3, TODO: set to 0 for no slack
 
-    def debug_twist_transformations(self, x0, verbose=True):
-        """Debug twist transformations step by step"""
-        p = x0[0:3]
-        v = x0[3:6]
-        q = x0[6:10]
-        w = x0[10:13]
-        
-        # if verbose:
-        #     print("="*50)
-        #     print("TWIST TRANSFORMATION DEBUG")
-        #     print("="*50)
-        #     print(f"Position (p): {p}")
-        #     print(f"Velocity (v): {v}")
-        #     print(f"Quaternion (q): {q}")
-        #     print(f"Angular velocity (w): {w}")
-        #     print("-"*30)
-        
-        # Debug twist map
-        twist_map = self.model.debug_twist_map(v, w)
-        twist_map_np = twist_map.full().flatten()
-        
-        # Debug twist transformations
-        twist_map_dbg, twist_base_dbg, R_mb = self.model.debug_twist_base(p, v, q, w)
-        twist_map_np = twist_map_dbg.full().flatten()
-        twist_base_np = twist_base_dbg.full().flatten()
-        R_mb_np = R_mb.full()
-        
-        # Debug full transformation
-        twist_map_full, twist_base_full, twist_cam_full, twist_optical_full = self.model.debug_twist_cam(p, v, q, w)
-        twist_cam_np = twist_cam_full.full().flatten()
-        twist_optical_np = twist_optical_full.full().flatten()
-
-        # Debug adjoint matrices
-        # adj_mb = self.model.debug_adj_mb(q, p)
-        # adj_bc = self.model.debug_adj_bc()
-        # adj_mb_np = adj_mb.full()
-        # adj_bc_np = adj_bc.full()
-        
-        if verbose:
-            print("="*50)
-            print(f"Twist Map (v,w): [{', '.join([f'{x:.2f}' for x in twist_map_np])}]")
-            print(f"Twist Base: [{', '.join([f'{x:.2f}' for x in twist_base_np])}]")
-            print("-"*30)
-            # print(f"Twist Camera: [{', '.join([f'{x:.2f}' for x in twist_cam_np])}]")
-            print(f"Twist Optical: [{', '.join([f'{x:.2f}' for x in twist_optical_np])}]")
-            print("="*50)
-
-    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False):
+    def solve(self, x0, verbose=False, ref=None, p_obj=None, Z=None, hybrid_mode=False, soft_start=False):
 
         # Set reference, create zero reference
         if ref is None:
@@ -508,6 +468,7 @@ class SpacecraftVSMPC:
         s_dot = self.model.feat_dyn_f(L_val, x0[0:3], x0[3:6], x0[6:10], x0[10:13])
         s_dot = s_dot.full().flatten()  # Convert to numpy array
 
+
         w_p, w_s, Vp_dot, Vs_dot, V_dot, softmax_p, softmax_s = (
             self.define_lyapunov_weight(
                 ocp_solver.get(0, "x"),
@@ -516,24 +477,26 @@ class SpacecraftVSMPC:
                 self.Qp_q,
                 self.w_features,
                 s_dot,
+                soft_start,
+                Z=Z,
             )
         )
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            w_p = np.zeros(1)
-            w_s = np.ones(1)
+            # w_p = 0.0
+            # w_s = 1.0
 
             if w_p < 0.05:
                 self.ibvs_mode = True
         elif hybrid_mode and self.ibvs_mode:
-            w_p = np.zeros(1)
-            w_s = np.ones(1)
+            w_p = 0.0
+            w_s = 1.0
         else:
             self.ibvs_mode = False
             s_dot = np.zeros(8)
-            w_p = np.ones(1)  # Set to 1 for no hybrid mode
-            w_s = np.zeros(1)
+            w_p = 1.0  # Set to 1 for no hybrid mode
+            w_s = 0.0
 
         for i in range(self.N + 1):
             if i != self.N and i != 0:
@@ -543,10 +506,10 @@ class SpacecraftVSMPC:
             if ref is not None:
                 # Assumed ref structure: (nx+nu) x N+1
                 # NOTE: last u_ref is not used
-                p_i = np.concatenate([ref[:, i], p_obj, Z, w_p, w_s])
+                p_i = np.concatenate([ref[:, i], p_obj, Z, np.array([w_p]), np.array([w_s])])
             else:
                 # set all references to 0
-                p_i = np.concatenate([zero_ref, p_obj, Z, w_p, w_s])
+                p_i = np.concatenate([zero_ref, p_obj, Z, np.array([w_p]), np.array([w_s])])
             ocp_solver.set(i, "p", p_i)
 
         # set initial state
@@ -562,15 +525,15 @@ class SpacecraftVSMPC:
         print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
 
         if verbose:
-            # self.debug_twist_transformations(x0)
+            # self.debug_transformations(x0)
             if hybrid_mode and not self.ibvs_mode:
-                # print(f"===== Lyapunov Values =====")
-                # # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
-                # print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
-                # print(
-                #     f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
-                # )
-                # print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
+                print(f"===== Lyapunov Values =====")
+                # print(f"Vp: {float(Vp):.4f}, Vs: {float(Vs):.4f}")
+                print(f"Vp_dot: {float(Vp_dot):.2f}, Vs_dot: {float(Vs_dot):.2f}")
+                print(
+                    f"softmax_p: {float(softmax_p):.2f}, softmax_s: {float(softmax_s):.2f}"
+                )
+                print(f"wp: {float(w_p):.2f}, ws: {float(w_s):.2f}")
                 pass
 
             # ocp_solver.dump_last_qp_to_json(filename="last_qp.json", overwrite=True)
@@ -596,8 +559,122 @@ class SpacecraftVSMPC:
         simX[N, :] = self.ocp_solver.get(N, "x")
 
         # debug the predicted twist on the first step
-        # v_pred = simX[0, 3:6]
-        # w_pred = simX[0, 10:13]
-        # print(f"Predicted twist: v = {v_pred}, w = {w_pred}")
+        v_pred = simX[0, 3:6]
+        w_pred = simX[0, 10:13]
+        vx, vy, vz = v_pred[0], v_pred[1], v_pred[2]
+        w_x, w_y, w_z = w_pred[0], w_pred[1], w_pred[2]
+        current_wz = x0[12][0]  # current angular velocity z component
+        # print(f"Predicted v_x = {vx:.4f}, Predicted twist: w_z = {w_z:.4f}")
+
 
         return simU, simX, w_p, w_s, Vp_dot, Vs_dot
+
+
+    def debug_transformations(self, x0):
+        def skew_symmetric(v):
+            """Create skew-symmetric matrix from 3D vector"""
+            return cs.vertcat(
+                cs.horzcat(0, -v[2], v[1]),
+                cs.horzcat(v[2], 0, -v[0]),
+                cs.horzcat(-v[1], v[0], 0)
+            )
+
+        
+        def adjoint_matrix(T):
+            """Compute 6x6 adjoint matrix from 4x4 transformation matrix"""
+            R = T[0:3, 0:3]  # Extract rotation part
+            t = T[0:3, 3]    # Extract translation part
+            
+            # Adjoint matrix structure:
+            # Ad_T = [R    [t]×R]
+            #        [0      R ]
+            t_skew = skew_symmetric(t)
+            t_skew_R = cs.mtimes(t_skew, R)
+            
+            # Build 6x6 adjoint matrix
+            Ad_T = cs.vertcat(
+                cs.horzcat(R, t_skew_R),
+                cs.horzcat(cs.DM.zeros(3, 3), R)
+            )
+            
+            return Ad_T
+        def q_to_rot_mat(q):
+            qw, qx, qy, qz = q[0], q[1], q[2], q[3]
+
+            rot_mat = cs.vertcat(
+                cs.horzcat(
+                    1 - 2 * (qy**2 + qz**2),
+                    2 * (qx * qy - qw * qz),
+                    2 * (qx * qz + qw * qy),
+                ),
+                cs.horzcat(
+                    2 * (qx * qy + qw * qz),
+                    1 - 2 * (qx**2 + qz**2),
+                    2 * (qy * qz - qw * qx),
+                ),
+                cs.horzcat(
+                    2 * (qx * qz - qw * qy),
+                    2 * (qy * qz + qw * qx),
+                    1 - 2 * (qx**2 + qy**2),
+                ),
+            )
+
+            return rot_mat
+
+        p = x0[0:3]
+        v = x0[3:6]
+        q = x0[6:10]
+        w = x0[10:13]
+
+        # 1. map to baes transformation
+        R_mb = q_to_rot_mat(q)  # rotation from map to base
+        T_mb = cs.vertcat(cs.horzcat(R_mb, p), cs.DM([[0, 0, 0, 1]]))
+        print("Map to Base Transform (T_mb):")
+        print(T_mb)
+
+        # 2. Base to Camera transformation, # T_bc : base --> camera  (src <- dest)
+        R_bc = cs.DM([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+        t_bc = cs.DM([-0.09, 0.0, 0.51])
+        T_bc = cs.vertcat(cs.horzcat(R_bc, t_bc), cs.DM([[0, 0, 0, 1]]))
+        print("\nBase to Camera Transform (T_bc):")
+        print(T_bc)
+
+        # 3. Camera to Optical transformation
+        R_optical_cam = cs.DM(
+            [
+                [0, -1, 0],  # x_optical = -y_cam
+                [0, 0, -1],  # y_optical = -z_cam
+                [1, 0, 0],  # z_optical = x_cam
+            ]
+        )
+        T_cam_optical = cs.vertcat(
+            cs.horzcat(R_optical_cam.T, cs.DM([0, 0, 0])), cs.DM([[0, 0, 0, 1]])
+        )
+        print("\nCamera to Optical Transform (T_cam_optical):")
+        print(T_cam_optical)
+
+        # Full transformation chain: Map -> Base -> Camera -> Optical
+        T_mc = cs.mtimes(T_mb, T_bc)  # Map to Camera
+
+        print ("\nMap to Camera Transform (T_mc):")
+        print(T_mc)
+        T_mo = cs.mtimes(T_mc, T_cam_optical)  # Map to Optical
+
+        print("\nFull Map to Optical Transform (T_mo):")
+        print(T_mo)
+
+        # now we debug twist transformation
+        twist_map = cs.vertcat(v, w)
+        # Transform twist from map to optical frame using adjoint
+        T_om = cs.inv(T_mo)
+        Ad_T_om = adjoint_matrix(T_om)
+        print("\nAdjoint Matrix of T_om:")
+        print(Ad_T_om)
+
+        # Apply adjoint transformation to get twist in optical frame
+        twist_optical = cs.mtimes(Ad_T_om, twist_map)
+        print("\nTwist in Optical Frame (twist_optical):")
+        v_optical = twist_optical[0:3]
+        w_optical = twist_optical[3:6]
+        print(f"Linear velocity in optical frame: {float(v_optical[0]):.3f}, {float(v_optical[1]):.3f}, {float(v_optical[2]):.3f}")
+        print(f"Angular velocity in optical frame: {float(w_optical[0]):.3f}, {float(w_optical[1]):.3f}, {float(w_optical[2]):.3f}")
