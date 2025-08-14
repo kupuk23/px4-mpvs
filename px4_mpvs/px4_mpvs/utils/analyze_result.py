@@ -54,11 +54,13 @@ def summarize(merged):
 def main(results_dir):
     # check if results_dir is path or file, if a file, immediately load it
     if not Path(results_dir).is_dir():
+        file_analysis = True
         if Path(results_dir).suffix != ".pickle":
             sys.exit(f"Expected a directory or a .pickle file, got {results_dir}")
         # Load single pickle file
         dicts = [load_pickle(Path(results_dir))]
     else:
+        file_analysis = False
         paths = sorted(Path(results_dir).glob("*.pickle"))
         if not paths:
             sys.exit(f"No .pkl files found in {results_dir}")
@@ -96,7 +98,8 @@ def main(results_dir):
     
     #print full docking duration, hybrid duration
     #show the name of the file with the shortest hybrid duration
-    print("\nThe best result is from file:", paths[min_duration_index].name)
+    if not file_analysis:
+        print("\nThe best result is from file:", paths[min_duration_index].name)
     print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
     print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
 
@@ -104,7 +107,7 @@ def main(results_dir):
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete/"
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete"
 
     )
     main(results_dir)
