@@ -176,17 +176,23 @@ class SpacecraftIBMPVS(Node):
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
         self.old_Z = np.array([1.0, 1.0, 1.0, 1.0])  # old Z coordinates of the markers
+        self.desired_pos = np.array([1.52061749, -1.09976614, 0.03869698])
+        self.desired_att = np.array([0.73090655, -0.00114944, -0.00619204, 0.68244863])
         self.statistics = {
-            "recorded_features": [],
-            "recorded_wp": [],
-            "recorded_ws": [],
-            "features_error": [],
-            "desired_points": self.desired_points,
-            "Vp_dot": [],
-            "Vs_dot": [],
-            "hybrid_duration": 0.0,  # duration of the hybrid control in seconds
-            "full_docking_duration": 0.0,  # duration of the full docking in seconds
-        }
+        "recorded_features": [],
+        "robot_pose": [],
+        "robot_att": [],
+        "desired_pos": self.desired_pos,
+        "desired_att": self.desired_att,
+        "recorded_wp": [],
+        "recorded_ws": [],
+        "features_error": [],
+        "desired_points": self.desired_points,
+        "Vp_dot": [],
+        "Vs_dot": [],
+        "hybrid_duration": 0.0,  # duration of the hybrid control in seconds
+        "full_docking_duration": 0.0,  # duration of the full docking in seconds
+    }
 
         # TIMER RELATED #
         self.start_recording = False  # flag to start recording the statistics
@@ -450,6 +456,13 @@ class SpacecraftIBMPVS(Node):
         mode = Int8()
         mode.data = self.mode
         self.mode_pub.publish(mode)
+
+        # self.get_logger().info(f"robot pos: {self.vehicle_local_position}, attitude: {self.vehicle_attitude}")
+        # feature_current = self.p_markers.flatten()  # Current features
+        # feature_desired = self.desired_points.flatten()  # Desired features
+
+        # error = np.linalg.norm(feature_current - feature_desired)
+        # self.get_logger().info(f"feature errors: {error}")
 
     def add_set_pos_callback(self, request, response):
         self.update_setpoint(request)

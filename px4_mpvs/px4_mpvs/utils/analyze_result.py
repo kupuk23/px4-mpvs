@@ -107,11 +107,18 @@ def main(results_dir):
     last_features_error = dicts[min_duration_index]['features_error'][-1]
     print(f"Last features error (SSE) : {last_features_error}")
 
+    # print final pose
+    final_pos = dicts[min_duration_index]['robot_pose'][-1]
+    final_att = dicts[min_duration_index]['robot_att'][-1]
+    print(f"Final position: {final_pos}")
+    print(f"Final attitude: {final_att}")
 
+    print("desired pose : ", dicts[min_duration_index]['desired_pos'])
+    print("desired attitude : ", dicts[min_duration_index]['desired_att'])
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/hybrid_statistics_softmax(08-23_14:56:21).pickle"
+        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/"
 
     )
     main(results_dir)

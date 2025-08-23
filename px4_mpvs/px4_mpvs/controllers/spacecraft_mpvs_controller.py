@@ -372,7 +372,7 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 10
+        S = S * 12
 
         Qp_p = Qp_p * 15
 
