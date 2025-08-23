@@ -40,6 +40,8 @@ def summarize(merged):
     """Return a DataFrame with count, mean, std, min, max for each metric."""
     rows = {}
     for k, vals in merged.items():
+        if k == "robot_att":
+            continue
         arr = np.asarray(vals, dtype=float)
         rows[k] = {
             "count": arr.size,
@@ -108,10 +110,17 @@ def main(results_dir):
     print(f"Last features error (SSE) : {last_features_error}")
 
 
+    final_pos = dicts[min_duration_index]['robot_pose'][-1]
+    final_att = dicts[min_duration_index]['robot_att'][-1]
+    print(f"Final position: {final_pos}")
+    print(f"Final attitude: {final_att}")
+
+    print("desired pose : ", dicts[min_duration_index]['desired_pos'])
+    print("desired attitude : ", dicts[min_duration_index]['desired_att'])
+
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/ratio/hybrid_statistics_ratio(08-23_13:49:02).pickle"
-        
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete"    )
 
-    )
+
     main(results_dir)

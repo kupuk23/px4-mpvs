@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 50 for element in S]
+        S_e = [element * 60 for element in S]
 
         R_mat = [4e1] * 4
 
@@ -372,7 +372,7 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 4
+        S = S * 10
 
         Qp_p = Qp_p * 15
 
@@ -426,9 +426,9 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
-        w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
-        w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
+        # w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
+        # w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
+        # w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
 
 
         V_dot = Vp_dot + Vs_dot
@@ -484,8 +484,8 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            # w_p = 0.0
-            # w_s = 1.0
+            w_p = 0.0
+            w_s = 1.0
 
             if w_p < 0.05:
                 self.ibvs_mode = True

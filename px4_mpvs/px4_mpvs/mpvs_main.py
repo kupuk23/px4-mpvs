@@ -84,7 +84,7 @@ class SpacecraftIBMPVS(Node):
         super().__init__("spacecraft_mpvs")
 
 
-        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
+        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
         self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = False
         self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"

@@ -95,7 +95,7 @@ class VisualServo(Node):
         self.success_duration_required = 4.0  # seconds
         self.docking_running = False
         self.docking_enabled = False
-        self.x_offset = 0.6
+        self.x_offset = 0.55
         self.latest_time = self.get_clock().now()
         self.pose_obtained = False
 

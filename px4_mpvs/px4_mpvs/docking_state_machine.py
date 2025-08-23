@@ -138,7 +138,7 @@ def docking_state_machine(node):
         node.statistics["Vp_dot"].append(Vp_dot)
         node.statistics["Vs_dot"].append(Vs_dot)
         node.statistics["robot_pose"].append(x0[:3].flatten())
-        node.statistics["robot_att"].append(x0[6:9].flatten())
+        node.statistics["robot_att"].append(x0[6:10].flatten())
 
         
     
