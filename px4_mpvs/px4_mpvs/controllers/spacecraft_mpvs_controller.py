@@ -47,13 +47,13 @@ class SpacecraftVSMPC:
         self.vel_limit = 0.8  # np.inf .1
         self.model = model
         self.Tf = 5.0
-        self.N = 24  # TODO: check how fast the update rate
+        self.N = 49  # TODO: check how fast the update rate
         self.ibvs_mode = False  # True for ibvs, False for pbvs
 
         self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 1e4  # Quaternion scalar part, 8e3
 
-        self.w_features = 35e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
+        self.w_features = 30e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
         self.x0 = (
             x0
             if x0 is not None
@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 30 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [4e1] * 4
 
@@ -280,7 +280,7 @@ class SpacecraftVSMPC:
         # w : 10-(9wp)
         # s : 1-wp
         v_scale = cs.sqrt(35 - (34 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(70 - (69 * w_p))  # Scale for angular velocity error
+        w_scale = cs.sqrt(45 - (44 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -426,9 +426,9 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
-        w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
-        w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
+        # w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
+        # w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
+        # w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
 
 
         V_dot = Vp_dot + Vs_dot

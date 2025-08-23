@@ -103,11 +103,15 @@ def main(results_dir):
     print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
     print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
 
+    #Show SSE using the last features_error
+    last_features_error = dicts[min_duration_index]['features_error'][-1]
+    print(f"Last features error (SSE) : {last_features_error}")
+
 
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/"
+        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data/softmax/hybrid_statistics_softmax(08-23_14:56:21).pickle"
 
     )
     main(results_dir)

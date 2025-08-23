@@ -84,8 +84,11 @@ class SpacecraftIBMPVS(Node):
         super().__init__("spacecraft_mpvs")
 
         self.build = False  # Set to False after the first run to avoid rebuilding
+        self.hybrid_mode = "softmax"  # "softmax" or "discrete" or "ratio"
         self.sitl = True
-        self.save_dir  = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data"
+        self.save_dir = (
+            "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/simulation_data"
+        )
 
         self.srv = self.create_service(
             SetBool, "run_debug", self.aligned_callback_enabled
@@ -97,15 +100,15 @@ class SpacecraftIBMPVS(Node):
 
         # flattened 2d coordinates of the desired points (4x2)
         self.desired_points = np.array(
-            [[82, 123], [563, 123], [176, 337], [505, 218]]
+            [[112, 147],
+ [488, 149],
+ [193, 311],
+ [440, 223]]
         ).flatten()
-
-        
 
         self.srv = self.create_service(
             SetBool, "/run_debug", self.aligned_callback_enabled
         )
-        
 
         # Get namespace
         self.namespace = self.declare_parameter("namespace", "").value
@@ -149,26 +152,23 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([1.0, 0.0, 0.0, 0.0])
 
         # first setpoint #
-        # self.setpoint_position = np.array([2.0, 0.0, 0.0]) 
-        # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])  
+        # self.setpoint_position = np.array([2.0, 0.0, 0.0])
+        # self.setpoint_attitude = np.array([0.0, 0.0, 0.0, 1.0])
 
         # setpoint for docking #
-        self.setpoint_position = np.array([1.13171983, -0.39508373, 0.0])  
-        self.setpoint_attitude = np.array([0.71056116, 0.0, 0.0, 0.70135128])  
+        self.setpoint_position = np.array([1.13171983, -0.39508373, 0.0])
+        self.setpoint_attitude = np.array([0.71056116, 0.0, 0.0, 0.70135128])
 
-
-        # self.setpoint_position = np.array([1.8987507, -0.906792305,  0.0])
-        # self.setpoint_attitude = np.array([ 7.1634791e-01,  0,0,  6.93631825e-01])
+        # self.setpoint_position = np.array([1.4987507, -0.816792305,  0.0])
+        # self.setpoint_attitude = np.array([ 7.1634791e-01,  0,0,  7.13631825e-01])
 
         # initial pose for docking 2 (heading right)
         # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
         # self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
 
-
         # initial pose for docking 3 (heading left)
         # self.setpoint_position = np.array([1.72465777, -0.99081445,  0.])
         # self.setpoint_attitude = np.array([8.75987232e-01, 0, 0, 4.82334286e-01])
-
 
         self.new_setpoint_position = np.array([0.0, 0.0, 0.0])
 
@@ -188,15 +188,15 @@ class SpacecraftIBMPVS(Node):
             "full_docking_duration": 0.0,  # duration of the full docking in seconds
         }
 
-        
         # TIMER RELATED #
         self.start_recording = False  # flag to start recording the statistics
         self.pre_dock_timer = perf_counter()  # Timer for docking
         self.start_docking_time = perf_counter()  # Timer for docking start
         self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 2 # time to stabilize the robot before docking (seconds)
-       
+        self.pre_docked_time_threshold = (
+            2  # time to stabilize the robot before docking (seconds)
+        )
 
         self.aligning = False
         self.aligned = False  # flag to check if the robot is aligned
@@ -205,16 +205,14 @@ class SpacecraftIBMPVS(Node):
         self.docked = False
         self.aligned = False  # True if the robot is aligned with the object
         self.model = SpacecraftVSModel()
-        self.mpc = SpacecraftVSMPC(self.model, build = self.build)
+        self.mpc = SpacecraftVSMPC(self.model, build=self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
         self.soft_start = True
-        self.ibvs_e_threshold = 45
-        
+        self.ibvs_e_threshold = 25
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         # Create service for docking control
-        
 
     def aligned_callback_enabled(self, request, response):
         """Service callback to enable/disable pose forwarding"""
@@ -227,16 +225,20 @@ class SpacecraftIBMPVS(Node):
             self.aligning = False
             self.mode = 1
             self.get_logger().info("Docking mode enabled")
-            
+
         return response
 
     def set_publishers_subscribers(self, qos_profile_pub, qos_profile_sub):
 
-
-        self.mode_pub = self.create_publisher(Int8, f"{self.namespace_prefix}/servoing_mode", 10) 
+        self.mode_pub = self.create_publisher(
+            Int8, f"{self.namespace_prefix}/servoing_mode", 10
+        )
 
         self.markers_sub = self.create_subscription(
-            Float32MultiArray, f"{self.namespace_prefix}/detected_markers", self.marker_callback, 10
+            Float32MultiArray,
+            f"{self.namespace_prefix}/detected_markers",
+            self.marker_callback,
+            10,
         )
 
         self.status_sub = self.create_subscription(
@@ -331,7 +333,18 @@ class SpacecraftIBMPVS(Node):
     def vehicle_attitude_callback(self, msg):
         # NED-> ENU transformation
         # Receives quaternion in NED frame as (qw, qx, qy, qz)
-        q_enu = 1/np.sqrt(2) * np.array([msg.q[0] + msg.q[3], msg.q[1] + msg.q[2], msg.q[1] - msg.q[2], msg.q[0] - msg.q[3]])
+        q_enu = (
+            1
+            / np.sqrt(2)
+            * np.array(
+                [
+                    msg.q[0] + msg.q[3],
+                    msg.q[1] + msg.q[2],
+                    msg.q[1] - msg.q[2],
+                    msg.q[0] - msg.q[3],
+                ]
+            )
+        )
         q_enu /= np.linalg.norm(q_enu)
         self.vehicle_attitude = q_enu.astype(float)
 
@@ -433,7 +446,7 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
         docking_state_machine(self)
-        
+
         mode = Int8()
         mode.data = self.mode
         self.mode_pub.publish(mode)
@@ -483,14 +496,11 @@ class SpacecraftIBMPVS(Node):
             self.aligned = request.aligned
             self.aligning = False
             self.mode = 1
-            
+
             self.get_logger().info("Robot is aligned, stopping homing mode")
             # update setpoint to be somewhere between the robot and object
 
-
-            self.get_logger().info(
-            f"OLD Setpoint position: {self.setpoint_position}"
-        )
+            self.get_logger().info(f"OLD Setpoint position: {self.setpoint_position}")
 
             self.new_setpoint_position = np.array(
                 [

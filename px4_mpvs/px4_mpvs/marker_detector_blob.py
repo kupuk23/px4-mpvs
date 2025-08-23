@@ -9,7 +9,7 @@ import matplotlib
 matplotlib.use("TkAgg")  # Use a non-interactive backend
 
 
-img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/docked_image_v3.jpg"
+img_path = "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/resource/new_features_pos.jpg"
 
 
 

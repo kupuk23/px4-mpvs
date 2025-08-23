@@ -7,7 +7,7 @@ import cv2
 from cv_bridge import CvBridge
 
 
-filename = "local_minima"
+filename = "new_features_pos"
 
 
 class SaveImage(Node):
