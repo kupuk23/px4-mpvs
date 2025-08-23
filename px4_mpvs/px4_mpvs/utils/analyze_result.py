@@ -103,11 +103,15 @@ def main(results_dir):
     print(f"Full docking duration : {dicts[min_duration_index]['full_docking_duration']}")
     print(f"Hybrid duration : {dicts[min_duration_index]['hybrid_duration']}")
 
+    #Show SSE using the last features_error
+    last_features_error = dicts[min_duration_index]['features_error'][-1]
+    print(f"Last features error (SSE) : {last_features_error}")
 
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete"
+        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/ratio/hybrid_statistics_ratio(08-23_13:49:02).pickle"
+        
 
     )
     main(results_dir)

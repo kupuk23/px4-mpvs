@@ -53,7 +53,7 @@ class SpacecraftVSMPC:
         self.Qp_p = 1e1  # Position weights (x, y, z), # 5e1 pbvs, 0 for ibvs
         self.Qp_q = 1e4  # Quaternion scalar part, 8e3
 
-        self.w_features = 45e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
+        self.w_features = 60e-4  # Image feature weights, 50e-4 for discrete, 45e-4 for dynamic weight
         self.x0 = (
             x0
             if x0 is not None
@@ -254,7 +254,7 @@ class SpacecraftVSMPC:
         ]
 
         Q_e = [element * 30 for element in Q]
-        S_e = [element * 60 for element in S]
+        S_e = [element * 50 for element in S]
 
         R_mat = [4e1] * 4
 
@@ -280,7 +280,7 @@ class SpacecraftVSMPC:
         # w : 10-(9wp)
         # s : 1-wp
         v_scale = cs.sqrt(30 - (29 * w_p))  # Scale for velocity error
-        w_scale = cs.sqrt(70 - (69 * w_p))  # Scale for angular velocity error
+        w_scale = cs.sqrt(80 - (79 * w_p))  # Scale for angular velocity error
         s_scale = cs.sqrt(1.0 - w_p)  # Scale for feature error
 
         x_error = cs.sqrt(w_p) * (x[0:3] - x_ref[0:3])
@@ -372,7 +372,7 @@ class SpacecraftVSMPC:
             ]
         )
 
-        S = S * 10
+        S = S * 4
 
         Qp_p = Qp_p * 15
 
@@ -426,9 +426,9 @@ class SpacecraftVSMPC:
         w_p = 1.0 - w_s
 
         # Ratio method
-        # w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
-        # w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
-        # w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
+        w_p = Vp_dot / (Vp_dot + Vs_dot + eps)
+        w_p = np.clip(w_p, 0.0, 1.0)  # Ensure w_p is between 0 and 1
+        w_s = np.absolute(1.0 - w_p) # w_s is always non-negative
 
 
         V_dot = Vp_dot + Vs_dot
@@ -484,8 +484,8 @@ class SpacecraftVSMPC:
 
         if hybrid_mode and not self.ibvs_mode:
             # TEST DISCRETE
-            w_p = 0.0
-            w_s = 1.0
+            # w_p = 0.0
+            # w_s = 1.0
 
             if w_p < 0.05:
                 self.ibvs_mode = True

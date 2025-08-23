@@ -105,7 +105,8 @@ def docking_state_machine(node):
         node.statistics["features_error"].append(error)
         # print(f"Current features: {feature_current}")
         # print(f"feature depth: {node.Z}")
-        # print(f"Feature errors: {error}")
+        if w_s == 1.0:
+            node.get_logger().info(f"Feature errors: {error}")
 
         if error < node.ibvs_e_threshold:
             current_time = perf_counter()
@@ -136,6 +137,8 @@ def docking_state_machine(node):
         node.statistics["recorded_ws"].append(w_s)
         node.statistics["Vp_dot"].append(Vp_dot)
         node.statistics["Vs_dot"].append(Vs_dot)
+        node.statistics["robot_pose"].append(x0[:3].flatten())
+        node.statistics["robot_att"].append(x0[6:9].flatten())
 
         
     

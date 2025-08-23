@@ -83,25 +83,25 @@ class SpacecraftIBMPVS(Node):
     def __init__(self):
         super().__init__("spacecraft_mpvs")
 
+
+        self.hybrid_mode = "ratio" # "softmax" or "discrete" or "ratio"
         self.build = False  # Set to False after the first run to avoid rebuilding
         self.sitl = False
         self.save_dir = "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp"
 
         # flattened 2d coordinates of the desired points (4x2)
-        self.desired_points = np.array( #old
-                [[ 82,  71],
-                [495,  71],
-                [ 65, 292],
-                [503, 237]]
-                        ).flatten()
+        # self.desired_points = np.array( #old
+        #         [[ 82,  71],
+        #         [495,  71],
+        #         [ 65, 292],
+        #         [503, 237]]
+        #                 ).flatten()
 
-#         self.desired_points = np.array([[107,  87],
-#  [492,  89],
-#  [ 86, 296],
-#  [503, 246]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
+        self.desired_points = np.array([[179, 126],
+ [507,  99],
+ [154, 302],
+ [522, 263]]).flatten()  # flattened 2d coordinates of the desired points (4x2)
 
-       
-        
 
         self.srv = self.create_service(
             SetBool, "/run_debug", self.aligned_callback_enabled
@@ -161,8 +161,8 @@ class SpacecraftIBMPVS(Node):
         # self.setpoint_attitude = np.array([ 7.1634791e-01,  0,0,  6.93631825e-01])
 
         # initial pose for docking 2 (heading right)
-        # self.setpoint_position = np.array([1.79763114, -0.99280247, 0.0])
-        # self.setpoint_attitude = np.array([0.70288746, 0.0, 0.0, 0.70939292])
+        # self.setpoint_position = np.array([1.99763114, -1.00280247, 0.0])
+        # self.setpoint_attitude = np.array([0.81288746, 0.0, 0.0, 0.578292])
 
 
         # initial pose for docking 3 (heading left)
@@ -176,8 +176,14 @@ class SpacecraftIBMPVS(Node):
         self.p_markers = np.array([100, 100, 400, 100, 100, 300, 400, 300])
         self.Z = np.array([1.0, 1.0, 1.0, 1.0])  # Z coordinates of the markers
         self.old_Z = np.array([1.0, 1.0, 1.0, 1.0])  # old Z coordinates of the markers
+        self.desired_pos = np.array([1.7978, -1.3292, 0.6256])
+        self.desired_att = np.array([0.69483238, -0.00660131, 0.00590194, 0.7191])
         self.statistics = {
             "recorded_features": [],
+            "robot_pose": [],
+            "robot_att": [],
+            "desired_pos": self.desired_pos,
+            "desired_att": self.desired_att,
             "recorded_wp": [],
             "recorded_ws": [],
             "features_error": [],
@@ -195,7 +201,7 @@ class SpacecraftIBMPVS(Node):
         self.start_docking_time = perf_counter()  # Timer for docking start
         self.hybrid_start_time = 0.0  # duration of the hybrid control in seconds
         self.pre_docked_time = 0  # Timer for pre-docking
-        self.pre_docked_time_threshold = 2 # time to stabilize the robot before docking (seconds)
+        self.pre_docked_time_threshold = 4 # time to stabilize the robot before docking (seconds)
        
 
         self.aligning = False
@@ -207,9 +213,8 @@ class SpacecraftIBMPVS(Node):
         self.model = SpacecraftVSModel()
         self.mpc = SpacecraftVSMPC(self.model, build = self.build)
         self.mode = 0  # 0: PBVS, 1: hybrid, 2: IBVS
-        self.hybrid_mode = "discrete" # "softmax" or "discrete" or "ratio"
         self.soft_start = True
-        self.ibvs_e_threshold = 45
+        self.ibvs_e_threshold = 20
         
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -433,6 +438,7 @@ class SpacecraftIBMPVS(Node):
 
     def cmdloop_callback(self):
         docking_state_machine(self)
+        # self.get_logger().info(f"robot pos: {self.vehicle_local_position}, attitude: {self.vehicle_attitude}")
         
         mode = Int8()
         mode.data = self.mode
