@@ -120,7 +120,7 @@ def main(results_dir):
 
 if __name__ == "__main__":
     results_dir = (
-        "/home/px4space/discower_ws/src/px4-mpvs/px4_mpvs/px4_mpvs/hw_exp/discrete"    )
+        "/home/tafarrel/discower_ws/src/px4_mpvs/px4_mpvs/px4_mpvs/hw_exp/softmax"    )
 
 
     main(results_dir)
