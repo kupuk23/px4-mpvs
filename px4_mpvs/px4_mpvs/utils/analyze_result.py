@@ -81,7 +81,7 @@ def main(results_dir):
     # choose statistic with shortest "hybrid_duration"
     hybrid_durations = np.array(merged["hybrid_duration"])
     min_duration_index = np.argmin(hybrid_durations)
-    plot_features(dicts[min_duration_index]["recorded_features"], dicts[min_duration_index]["desired_points"])
+    plot_features(dicts[min_duration_index]["recorded_features"], dicts[min_duration_index]["desired_points"], dicts[min_duration_index]["full_docking_duration"])
     plot_weights(dicts[min_duration_index]["recorded_wp"], dicts[min_duration_index]["recorded_ws"], dicts[min_duration_index]["full_docking_duration"])
 
     # plot lyapunovs
