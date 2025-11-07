@@ -26,6 +26,9 @@ def plot_weights(w_p, w_s, duration=None, lyapunov=False):
         if duration is not None
         else np.arange(len(w_p))
     )
+    
+    
+
     ax.plot(time_steps, w_p, label="w_p" if not lyapunov else "Vp_dot", color="blue")
     ax.plot(time_steps, w_s, label="w_s" if not lyapunov else "Vs_dot", color="orange")
     ax.set_xlabel("Time (s)" if duration is not None else "Time Steps")
@@ -35,7 +38,7 @@ def plot_weights(w_p, w_s, duration=None, lyapunov=False):
     # plt.show()
 
 
-def plot_features(features, desired, duration = None):
+def plot_features(best_data):
     """
     Plot the features in 3D space.
 
@@ -43,6 +46,11 @@ def plot_features(features, desired, duration = None):
         features (list of np.ndarray): List of feature points, each row consist of 4 points (x,y) flattened.
         desired (np.ndarray): Desired feature points, each row consist of 4 points (x,y) flattened.
     """
+    features = best_data["recorded_features"]
+    desired = best_data["desired_points"]
+    duration = best_data["hybrid_duration"]
+    duration_full = best_data["full_docking_duration"]
+
     fig = plt.figure()
     ax = fig.add_subplot(111)
 
@@ -95,14 +103,14 @@ def plot_features(features, desired, duration = None):
     ax.invert_yaxis()
     ax.legend()
 
-    plot_feature_errors(features, desired, duration)
+    plot_feature_errors(features, desired, duration, duration_full)
 
     plt.title("Feature Points and Desired Points Plot")
 
     plt.show()
 
 
-def plot_feature_errors(features, desired, duration=None):
+def plot_feature_errors(features, desired, duration, duration_full):
     """
     Plot the individual feature errors over time with different colors for each feature.
 
@@ -112,11 +120,13 @@ def plot_feature_errors(features, desired, duration=None):
     """
     features = np.array(features)
 
-    time_steps = (
-        np.arange(len(features)) * duration / len(features)
-        if duration is not None
-        else np.arange(len(features))
-    )
+
+    # Calculate time offset and create full duration time steps
+    time_offset = duration_full - duration
+    
+    # Create time steps for the full duration
+    time_steps = np.linspace(0, duration_full, len(features) + int(len(features) * time_offset / duration))
+    
     
     # Extract each feature point over time
     p1 = features[:, 0:2]  # Feature 1 (x,y)
@@ -141,8 +151,27 @@ def plot_feature_errors(features, desired, duration=None):
     error_p2_norm = np.linalg.norm(error_p2, axis=1)
     error_p3_norm = np.linalg.norm(error_p3, axis=1)
     error_p4_norm = np.linalg.norm(error_p4, axis=1)
+
+    # Calculate how many zero points to add at the beginning
+    num_zeros = int(len(features) * time_offset / duration)
     
+     # Pad errors with zeros at the beginning
+    zero_padding_2d = np.zeros((num_zeros, 2))
+    zero_padding_1d = np.zeros(num_zeros)
+
+     # Pad the 2D errors (x,y components)
+    error_p1_padded = np.vstack([zero_padding_2d, error_p1])
+    error_p2_padded = np.vstack([zero_padding_2d, error_p2])
+    error_p3_padded = np.vstack([zero_padding_2d, error_p3])
+    error_p4_padded = np.vstack([zero_padding_2d, error_p4])
     
+    # Pad the 1D norm errors
+    error_p1_norm_padded = np.concatenate([zero_padding_1d, error_p1_norm])
+    error_p2_norm_padded = np.concatenate([zero_padding_1d, error_p2_norm])
+    error_p3_norm_padded = np.concatenate([zero_padding_1d, error_p3_norm])
+    error_p4_norm_padded = np.concatenate([zero_padding_1d, error_p4_norm])
+    
+
     # Create subplots for X and Y errors separately
     fig2, axes = plt.subplots(1, 2, figsize=(10, 4))
     fig2.suptitle('Individual Feature Errors Over Time')
@@ -152,14 +181,14 @@ def plot_feature_errors(features, desired, duration=None):
 
     
     # Plot Euclidean distance errors
-    axes[0].plot(time_steps, error_p1[:,0], color=colors[0], label='Feature 1 (x)', linewidth=1)
-    axes[0].plot(time_steps, error_p2[:,0], color=colors[1], label='Feature 2 (x)', linewidth=1)
-    axes[0].plot(time_steps, error_p3[:,0], color=colors[2], label='Feature 3 (x)', linewidth=1)
-    axes[0].plot(time_steps, error_p4[:,0], color=colors[3], label='Feature 4 (x)', linewidth=1)
-    axes[0].plot(time_steps, error_p1[:,1], color=colors[4], label='Feature 1 (y)', linewidth=1)
-    axes[0].plot(time_steps, error_p2[:,1], color=colors[5], label='Feature 2 (y)', linewidth=1)
-    axes[0].plot(time_steps, error_p3[:,1], color=colors[6], label='Feature 3 (y)', linewidth=1)
-    axes[0].plot(time_steps, error_p4[:,1], color=colors[7], label='Feature 4 (y)', linewidth=1)
+    axes[0].plot(time_steps, error_p1_padded[:,0], color=colors[0], label='Feature 1 (x)', linewidth=1)
+    axes[0].plot(time_steps, error_p2_padded[:,0], color=colors[1], label='Feature 2 (x)', linewidth=1)
+    axes[0].plot(time_steps, error_p3_padded[:,0], color=colors[2], label='Feature 3 (x)', linewidth=1)
+    axes[0].plot(time_steps, error_p4_padded[:,0], color=colors[3], label='Feature 4 (x)', linewidth=1)
+    axes[0].plot(time_steps, error_p1_padded[:,1], color=colors[4], label='Feature 1 (y)', linewidth=1)
+    axes[0].plot(time_steps, error_p2_padded[:,1], color=colors[5], label='Feature 2 (y)', linewidth=1)
+    axes[0].plot(time_steps, error_p3_padded[:,1], color=colors[6], label='Feature 3 (y)', linewidth=1)
+    axes[0].plot(time_steps, error_p4_padded[:,1], color=colors[7], label='Feature 4 (y)', linewidth=1)
     axes[0].set_title('Euclidean Distance Errors')
     axes[0].set_xlabel('Time Steps')
     axes[0].set_ylabel('Error (pixels)')
@@ -167,7 +196,7 @@ def plot_feature_errors(features, desired, duration=None):
     axes[0].grid(True, alpha=0.3)
     
     # Plot combined error norm (sum of all feature errors)
-    total_error = error_p1_norm + error_p2_norm + error_p3_norm + error_p4_norm
+    total_error = error_p1_norm_padded + error_p2_norm_padded + error_p3_norm_padded + error_p4_norm_padded
     axes[1].plot(time_steps, total_error, color='black', label='Total Error', linewidth=1)
     axes[1].set_title('Total Error (Sum of All Features)')
     axes[1].set_xlabel('Time Steps')
