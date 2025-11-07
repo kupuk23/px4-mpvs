@@ -150,27 +150,6 @@ def plot_feature_errors(features, desired, duration=None):
     # Colors for each feature
     colors = ['red', 'green', 'blue', 'orange', 'purple', 'brown', 'pink', 'gray']
 
-    # # Plot X errors
-    # axes[0, 0].plot(time_steps, error_p1[:, 0], color=colors[0], label='Feature 1', linewidth=2)
-    # axes[0, 0].plot(time_steps, error_p2[:, 0], color=colors[1], label='Feature 2', linewidth=2)
-    # axes[0, 0].plot(time_steps, error_p3[:, 0], color=colors[2], label='Feature 3', linewidth=2)
-    # axes[0, 0].plot(time_steps, error_p4[:, 0], color=colors[3], label='Feature 4', linewidth=2)
-    # axes[0, 0].set_title('X Position Errors')
-    # axes[0, 0].set_xlabel('Time Steps')
-    # axes[0, 0].set_ylabel('Error (pixels)')
-    # axes[0, 0].legend()
-    # axes[0, 0].grid(True, alpha=0.3)
-    
-    # # Plot Y errors
-    # axes[0, 1].plot(time_steps, error_p1[:, 1], color=colors[0], label='Feature 1', linewidth=2)
-    # axes[0, 1].plot(time_steps, error_p2[:, 1], color=colors[1], label='Feature 2', linewidth=2)
-    # axes[0, 1].plot(time_steps, error_p3[:, 1], color=colors[2], label='Feature 3', linewidth=2)
-    # axes[0, 1].plot(time_steps, error_p4[:, 1], color=colors[3], label='Feature 4', linewidth=2)
-    # axes[0, 1].set_title('Y Position Errors')
-    # axes[0, 1].set_xlabel('Time Steps')
-    # axes[0, 1].set_ylabel('Error (pixels)')
-    # axes[0, 1].legend()
-    # axes[0, 1].grid(True, alpha=0.3)
     
     # Plot Euclidean distance errors
     axes[0].plot(time_steps, error_p1[:,0], color=colors[0], label='Feature 1 (x)', linewidth=1)
