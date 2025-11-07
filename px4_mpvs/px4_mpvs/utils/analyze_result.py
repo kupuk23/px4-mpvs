@@ -11,7 +11,7 @@ import sys
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from px4_mpvs.utils.plot_utils import plot_features, plot_weights
+from px4_mpvs.utils.plot_utils import plot_features, plot_weights, plot_pose_error
 
 
 
@@ -54,6 +54,7 @@ def summarize(merged):
 
 
 def main(results_dir):
+    
     # check if results_dir is path or file, if a file, immediately load it
     if not Path(results_dir).is_dir():
         file_analysis = True
@@ -84,6 +85,7 @@ def main(results_dir):
     plot_features(dicts[min_duration_index])
     plot_weights(dicts[min_duration_index]["recorded_wp"], dicts[min_duration_index]["recorded_ws"], dicts[min_duration_index]["full_docking_duration"])
 
+    plot_pose_error(dicts[min_duration_index])
     # plot lyapunovs
     plot_weights(
         dicts[min_duration_index]["Vp_dot"],

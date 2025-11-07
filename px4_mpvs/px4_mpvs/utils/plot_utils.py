@@ -109,6 +109,41 @@ def plot_features(best_data):
 
     plt.show()
 
+def plot_pose_error(best_dicts_per_mode):
+    """
+    Plot the pose error over time for best result from each mode.
+
+    Args:
+        best_dicts_per_mode (dict): Dictionary containing best result for each mode.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    colors = ['red', 'blue', 'green']
+    
+    for i, (mode, best_data) in enumerate(best_dicts_per_mode.items()):
+        if mode != "softmax":
+            continue  # Only plot for softmax mode
+        robot_poses = np.array(best_data["robot_pose"])
+        desired_pos = np.array(best_data["desired_pos"])
+        duration_full = best_data["full_docking_duration"]
+
+        # Calculate position errors
+        position_errors = robot_poses - desired_pos
+        position_errors_norm = np.linalg.norm(position_errors, axis=1)
+
+        time_steps = np.linspace(0, duration_full, len(position_errors_norm))
+
+        ax.plot(time_steps, position_errors_norm, color=colors[i % len(colors)], 
+                label=f'{mode} (duration: {duration_full:.2f}s)', linewidth=1)
+
+    # Put a line at y=0
+    ax.axhline(0, color='black', linestyle='--', linewidth=0.5)
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Position Error (m)")
+    # ax.legend(loc='upper right')
+    ax.grid(True, alpha=0.3)
+    plt.title("Position Error Over Time (Softmax Mode)")
 
 def plot_feature_errors(features, desired, duration, duration_full):
     """
@@ -173,7 +208,7 @@ def plot_feature_errors(features, desired, duration, duration_full):
     
 
     # Create subplots for X and Y errors separately
-    fig2, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig2, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig2.suptitle('Individual Feature Errors Over Time')
     
     # Colors for each feature
@@ -192,7 +227,7 @@ def plot_feature_errors(features, desired, duration, duration_full):
     axes[0].set_title('Euclidean Distance Errors')
     axes[0].set_xlabel('Time Steps')
     axes[0].set_ylabel('Error (pixels)')
-    axes[0].legend(fontsize='small', ncol=2)
+    axes[0].legend(fontsize='small', ncol=2, loc='lower right')
     axes[0].grid(True, alpha=0.3)
     
     # Plot combined error norm (sum of all feature errors)
@@ -201,7 +236,7 @@ def plot_feature_errors(features, desired, duration, duration_full):
     axes[1].set_title('Total Error (Sum of All Features)')
     axes[1].set_xlabel('Time Steps')
     axes[1].set_ylabel('Error (pixels)')
-    axes[1].legend()
+    axes[1].legend(loc='lower right')
     axes[1].grid(True, alpha=0.3)
     
     # plt.tight_layout()
